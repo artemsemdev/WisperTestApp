@@ -190,7 +190,7 @@ If a full restructuring is too much for the first pass:
 - expose internal reusable logic via shared facades or `InternalsVisibleTo`
 - still move protocol-safe orchestration out of the current console entry point
 
-The fallback is acceptable, but the **preferred** path is a shared application layer.
+The codebase is small enough that this `InternalsVisibleTo` approach is pragmatic and recommended for the first pass. It gets to a working MCP server faster while deferring a full project split to a later iteration when the boundaries are better understood through real usage. Start here, restructure later if needed.
 
 ---
 
