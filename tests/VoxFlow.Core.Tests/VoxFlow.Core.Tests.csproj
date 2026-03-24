@@ -19,4 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\VoxFlow.Core\VoxFlow.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TestSupport\*.cs" Link="TestSupport\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
