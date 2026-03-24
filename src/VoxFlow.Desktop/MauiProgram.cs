@@ -21,7 +21,6 @@ public static class MauiProgram
         builder.Services.AddVoxFlowCore();
         builder.Services.AddSingleton<IConfigurationService, DesktopConfigurationService>();
         builder.Services.AddSingleton<AppViewModel>();
-        builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<MainPage>();
 
         return builder.Build();
