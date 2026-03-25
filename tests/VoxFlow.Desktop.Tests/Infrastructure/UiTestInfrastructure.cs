@@ -12,7 +12,6 @@ using VoxFlow.Core.DependencyInjection;
 using VoxFlow.Core.Interfaces;
 using VoxFlow.Core.Models;
 using VoxFlow.Desktop.ViewModels;
-using Whisper.net;
 
 namespace VoxFlow.Desktop.Tests;
 
@@ -38,8 +37,7 @@ internal sealed class DesktopUiTestContext : IAsyncDisposable
     public static DesktopUiTestContext Create(
         IConfigurationService? configurationService = null,
         IValidationService? validationService = null,
-        DelegateTranscriptionService? transcriptionService = null,
-        IModelService? modelService = null)
+        DelegateTranscriptionService? transcriptionService = null)
     {
         VoxFlow.Desktop.Platform.MacFilePicker.Reset();
         FilePicker.Default = new FilePicker();
@@ -51,10 +49,9 @@ internal sealed class DesktopUiTestContext : IAsyncDisposable
             (_, _) => Task.FromResult(TestValidationFactory.Create(canStart: true)));
         var transcription = transcriptionService ?? new DelegateTranscriptionService(
             (request, _, _) => Task.FromResult(TestTranscriptionFactory.Create(success: true, path: request.InputPath)));
-        var models = modelService ?? new DelegateModelService(options.ModelFilePath, options.ModelType);
         var jsRuntime = new RecordingJsRuntime();
 
-        var viewModel = new AppViewModel(transcription, validation, config, models);
+        var viewModel = new AppViewModel(transcription, validation, config);
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -423,30 +420,6 @@ internal sealed class DelegateTranscriptionService : ITranscriptionService
     {
         LastFilePath = request.InputPath;
         return _transcribeAsync(request, progress, cancellationToken);
-    }
-}
-
-internal sealed class DelegateModelService : IModelService
-{
-    private readonly string _modelPath;
-    private readonly string _modelType;
-
-    public DelegateModelService(string modelPath, string modelType)
-    {
-        _modelPath = modelPath;
-        _modelType = modelType;
-    }
-
-    public Task<WhisperFactory> GetOrCreateFactoryAsync(
-        TranscriptionOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<WhisperFactory>(null!);
-    }
-
-    public ModelInfo InspectModel(TranscriptionOptions options)
-    {
-        return new ModelInfo(_modelPath, _modelType, Exists: true, FileSizeBytes: 1024, IsLoadable: true, NeedsDownload: false);
     }
 }
 

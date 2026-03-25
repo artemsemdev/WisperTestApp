@@ -1,5 +1,8 @@
 namespace VoxFlow.Core.Models;
 
+/// <summary>
+/// Represents the outcome of a batch transcription run.
+/// </summary>
 public sealed record BatchTranscribeResult(
     int TotalFiles,
     int Succeeded,
@@ -9,6 +12,9 @@ public sealed record BatchTranscribeResult(
     TimeSpan TotalDuration,
     IReadOnlyList<BatchFileResult> Results);
 
+/// <summary>
+/// Captures the result of a single file within a batch transcription run.
+/// </summary>
 public sealed record BatchFileResult(
     string InputPath,
     string OutputPath,

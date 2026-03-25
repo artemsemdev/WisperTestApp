@@ -28,6 +28,16 @@ internal sealed class BatchTranscriptionService : IBatchTranscriptionService
         IOutputWriter outputWriter,
         IBatchSummaryWriter summaryWriter)
     {
+        ArgumentNullException.ThrowIfNull(configService);
+        ArgumentNullException.ThrowIfNull(validationService);
+        ArgumentNullException.ThrowIfNull(fileDiscovery);
+        ArgumentNullException.ThrowIfNull(audioConversion);
+        ArgumentNullException.ThrowIfNull(modelService);
+        ArgumentNullException.ThrowIfNull(wavLoader);
+        ArgumentNullException.ThrowIfNull(languageSelection);
+        ArgumentNullException.ThrowIfNull(outputWriter);
+        ArgumentNullException.ThrowIfNull(summaryWriter);
+
         _configService = configService;
         _validationService = validationService;
         _fileDiscovery = fileDiscovery;
@@ -44,6 +54,8 @@ internal sealed class BatchTranscriptionService : IBatchTranscriptionService
         IProgress<ProgressUpdate>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         var totalStopwatch = Stopwatch.StartNew();
         var options = await _configService.LoadAsync(request.ConfigurationPath);
         var batchOptions = options.Batch;
@@ -64,7 +76,7 @@ internal sealed class BatchTranscriptionService : IBatchTranscriptionService
         var factory = await _modelService.GetOrCreateFactoryAsync(options, cancellationToken);
 
         // 3. Discover files
-        var discoveredFiles = _fileDiscovery.DiscoverInputFiles(batchOptions);
+        var discoveredFiles = _fileDiscovery.DiscoverInputFiles(batchOptions, request.MaxFiles);
         var results = new List<BatchFileResult>(discoveredFiles.Count);
 
         // 4. Process each file
@@ -139,7 +151,20 @@ internal sealed class BatchTranscriptionService : IBatchTranscriptionService
     private static void CleanupTempWav(string wavPath, bool keepIntermediateFiles)
     {
         if (keepIntermediateFiles) return;
-        try { if (File.Exists(wavPath)) File.Delete(wavPath); }
-        catch { /* best-effort */ }
+        try
+        {
+            if (File.Exists(wavPath))
+            {
+                File.Delete(wavPath);
+            }
+        }
+        catch (IOException)
+        {
+            // Temp WAV cleanup is best-effort because a failed delete should not hide the transcription result.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Temp WAV cleanup is best-effort because a failed delete should not hide the transcription result.
+        }
     }
 }

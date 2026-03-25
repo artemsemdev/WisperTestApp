@@ -39,6 +39,15 @@ public sealed class PathPolicyTests
     }
 
     [Fact]
+    public void ValidateInputPath_AcceptsPathMatchingAllowedRootExactly()
+    {
+        var tempDir = Path.GetTempPath();
+        var policy = CreatePolicy(inputRoots: new[] { tempDir });
+
+        policy.ValidateInputPath(tempDir);
+    }
+
+    [Fact]
     public void ValidateInputPath_RejectsAbsolutePath_OutsideAllowedRoots()
     {
         var policy = CreatePolicy(inputRoots: new[] { "/allowed/input" });
@@ -73,6 +82,15 @@ public sealed class PathPolicyTests
 
         // Should not throw.
         policy.ValidateOutputPath(path);
+    }
+
+    [Fact]
+    public void ValidateOutputPath_AcceptsPathMatchingAllowedRootExactly()
+    {
+        var tempDir = Path.GetTempPath();
+        var policy = CreatePolicy(outputRoots: new[] { tempDir });
+
+        policy.ValidateOutputPath(tempDir);
     }
 
     [Fact]

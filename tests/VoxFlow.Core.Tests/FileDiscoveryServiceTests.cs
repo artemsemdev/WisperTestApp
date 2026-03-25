@@ -155,6 +155,58 @@ public sealed class FileDiscoveryServiceTests
     }
 
     [Fact]
+    public void DiscoverInputFiles_MaxFilesSpecified_ReturnsOnlyRequestedCount()
+    {
+        using var directory = new TemporaryDirectory();
+        var inputDir = Path.Combine(directory.Path, "input");
+        Directory.CreateDirectory(inputDir);
+
+        File.WriteAllText(Path.Combine(inputDir, "charlie.m4a"), "audio data");
+        File.WriteAllText(Path.Combine(inputDir, "alpha.m4a"), "audio data");
+        File.WriteAllText(Path.Combine(inputDir, "bravo.m4a"), "audio data");
+
+        var options = new BatchOptions(
+            InputDirectory: inputDir,
+            OutputDirectory: directory.Path,
+            TempDirectory: directory.Path,
+            FilePattern: "*.m4a",
+            StopOnFirstError: false,
+            KeepIntermediateFiles: false,
+            SummaryFilePath: "summary.txt");
+
+        var service = new FileDiscoveryService();
+        var files = service.DiscoverInputFiles(options, maxFiles: 2);
+
+        Assert.Equal(2, files.Count);
+        Assert.Contains("alpha.m4a", files[0].InputPath);
+        Assert.Contains("bravo.m4a", files[1].InputPath);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void DiscoverInputFiles_InvalidMaxFiles_Throws(int maxFiles)
+    {
+        using var directory = new TemporaryDirectory();
+        var inputDir = Path.Combine(directory.Path, "input");
+        Directory.CreateDirectory(inputDir);
+        File.WriteAllText(Path.Combine(inputDir, "audio.m4a"), "audio data");
+
+        var options = new BatchOptions(
+            InputDirectory: inputDir,
+            OutputDirectory: directory.Path,
+            TempDirectory: directory.Path,
+            FilePattern: "*.m4a",
+            StopOnFirstError: false,
+            KeepIntermediateFiles: false,
+            SummaryFilePath: "summary.txt");
+
+        var service = new FileDiscoveryService();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.DiscoverInputFiles(options, maxFiles));
+    }
+
+    [Fact]
     public void DiscoverInputFiles_MissingDirectory_Throws()
     {
         var options = new BatchOptions(

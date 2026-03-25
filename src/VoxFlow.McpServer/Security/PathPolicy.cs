@@ -20,6 +20,9 @@ internal sealed class PathPolicy : IPathPolicy
         IReadOnlyList<string> allowedOutputRoots,
         bool requireAbsolutePaths = true)
     {
+        ArgumentNullException.ThrowIfNull(allowedInputRoots);
+        ArgumentNullException.ThrowIfNull(allowedOutputRoots);
+
         this.allowedInputRoots = NormalizeRoots(allowedInputRoots);
         this.allowedOutputRoots = NormalizeRoots(allowedOutputRoots);
         this.requireAbsolutePaths = requireAbsolutePaths;
@@ -54,7 +57,11 @@ internal sealed class PathPolicy : IPathPolicy
             ValidateInputPath(path);
             return true;
         }
-        catch
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
         {
             return false;
         }
@@ -67,7 +74,11 @@ internal sealed class PathPolicy : IPathPolicy
             ValidateOutputPath(path);
             return true;
         }
-        catch
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
         {
             return false;
         }
@@ -97,8 +108,13 @@ internal sealed class PathPolicy : IPathPolicy
 
     private static bool IsUnderAnyRoot(string path, IReadOnlyList<string> roots)
     {
-        var normalized = Path.GetFullPath(path);
-        return roots.Any(root => normalized.StartsWith(root, StringComparison.OrdinalIgnoreCase));
+        var normalizedPath = TrimTrailingDirectorySeparator(Path.GetFullPath(path));
+        return roots.Any(root =>
+        {
+            var normalizedRoot = TrimTrailingDirectorySeparator(root);
+            return normalizedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                   || normalizedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     private static bool ContainsTraversalSegments(string path)
@@ -121,6 +137,14 @@ internal sealed class PathPolicy : IPathPolicy
                     : normalized + Path.DirectorySeparatorChar;
             })
             .ToArray();
+    }
+
+    private static string TrimTrailingDirectorySeparator(string path)
+    {
+        var root = Path.GetPathRoot(path);
+        return string.Equals(path, root, StringComparison.Ordinal)
+            ? path
+            : path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     /// <summary>

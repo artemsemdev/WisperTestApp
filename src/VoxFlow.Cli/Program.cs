@@ -11,7 +11,11 @@ internal static class Program
     {
         var services = new ServiceCollection();
         services.AddVoxFlowCore();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true
+        });
 
         using var cts = new CancellationTokenSource();
 

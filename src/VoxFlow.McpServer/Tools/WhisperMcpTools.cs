@@ -35,6 +35,15 @@ internal sealed class WhisperMcpTools
         IPathPolicy pathPolicy,
         IOptions<McpOptions> mcpOptions)
     {
+        ArgumentNullException.ThrowIfNull(transcriptionService);
+        ArgumentNullException.ThrowIfNull(batchTranscriptionService);
+        ArgumentNullException.ThrowIfNull(validationService);
+        ArgumentNullException.ThrowIfNull(modelService);
+        ArgumentNullException.ThrowIfNull(configurationService);
+        ArgumentNullException.ThrowIfNull(transcriptReader);
+        ArgumentNullException.ThrowIfNull(pathPolicy);
+        ArgumentNullException.ThrowIfNull(mcpOptions);
+
         this.transcriptionService = transcriptionService;
         this.batchTranscriptionService = batchTranscriptionService;
         this.validationService = validationService;
@@ -224,7 +233,7 @@ internal sealed class WhisperMcpTools
 
         try
         {
-            pathPolicy.ValidateInputPath(path);
+            pathPolicy.ValidateOutputPath(path);
             var result = await transcriptReader.ReadAsync(path, maxCharacters, cancellationToken)
                 .ConfigureAwait(false);
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });

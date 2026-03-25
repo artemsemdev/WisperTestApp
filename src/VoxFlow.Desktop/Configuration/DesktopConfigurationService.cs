@@ -34,7 +34,18 @@ public sealed class DesktopConfigurationService : IConfigurationService
         }
         finally
         {
-            try { File.Delete(tempPath); } catch { /* best-effort */ }
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch (IOException)
+            {
+                // Temp snapshots are disposable merge artifacts, so cleanup is best-effort.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Temp snapshots are disposable merge artifacts, so cleanup is best-effort.
+            }
         }
     }
 

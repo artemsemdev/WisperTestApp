@@ -2,7 +2,6 @@ using VoxFlow.Core.Configuration;
 using VoxFlow.Core.Interfaces;
 using VoxFlow.Core.Models;
 using VoxFlow.Desktop.ViewModels;
-using Whisper.net;
 using Xunit;
 
 namespace VoxFlow.Desktop.Tests;
@@ -96,28 +95,6 @@ internal sealed class StubTranscriptionService : ITranscriptionService
     }
 }
 
-/// <summary>
-/// Stub model service for DI compatibility.
-/// </summary>
-internal sealed class StubModelService : IModelService
-{
-    public Task<WhisperFactory> GetOrCreateFactoryAsync(
-        TranscriptionOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<WhisperFactory>(null!);
-    }
-
-    public ModelInfo InspectModel(TranscriptionOptions options)
-        => new ModelInfo(
-            ModelPath: options.ModelFilePath,
-            ModelType: options.ModelType,
-            Exists: false,
-            FileSizeBytes: null,
-            IsLoadable: false,
-            NeedsDownload: true);
-}
-
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
@@ -149,8 +126,7 @@ internal static class ViewModelFactory
         return new AppViewModel(
             transcriptionService ?? new StubTranscriptionService(success: true),
             new StubValidationService(validationCanStart),
-            new StubConfigurationService(settingsPath),
-            new StubModelService());
+            new StubConfigurationService(settingsPath));
     }
 }
 
