@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace VoxFlow.McpServer.Configuration;
 
 /// <summary>
-/// Configuration options for the MCP server, loaded from appsettings.json "mcp" section.
+/// Configuration options for the MCP server, loaded from the <c>mcp</c> section.
 /// </summary>
 public sealed class McpOptions
 {
@@ -22,17 +22,26 @@ public sealed class McpOptions
     public McpLoggingOptions Logging { get; set; } = new();
 }
 
+/// <summary>
+/// Controls whether MCP resources are exposed to the client.
+/// </summary>
 public sealed class McpResourceOptions
 {
     public bool Enabled { get; set; } = true;
     public bool ExposeLastRun { get; set; } = true;
 }
 
+/// <summary>
+/// Controls whether predefined MCP prompts are exposed to the client.
+/// </summary>
 public sealed class McpPromptOptions
 {
     public bool Enabled { get; set; } = true;
 }
 
+/// <summary>
+/// Captures the intended MCP host logging configuration.
+/// </summary>
 public sealed class McpLoggingOptions
 {
     public string MinimumLevel { get; set; } = "Information";

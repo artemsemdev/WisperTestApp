@@ -1,0 +1,98 @@
+name: CI
+
+# Run the standard verification pipeline for primary branches and all PRs.
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+# Keep command output stable and reduce CI noise across all jobs.
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CI: true
+
+jobs:
+  # Validate the shared library and non-desktop hosts on Linux.
+  core-hosts:
+    name: Core, CLI, MCP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore core projects
+        run: |
+          dotnet restore src/VoxFlow.Core/VoxFlow.Core.csproj
+          dotnet restore src/VoxFlow.Cli/VoxFlow.Cli.csproj
+          dotnet restore src/VoxFlow.McpServer/VoxFlow.McpServer.csproj
+          dotnet restore tests/VoxFlow.Core.Tests/VoxFlow.Core.Tests.csproj
+          dotnet restore tests/VoxFlow.Cli.Tests/VoxFlow.Cli.Tests.csproj
+          dotnet restore tests/VoxFlow.McpServer.Tests/VoxFlow.McpServer.Tests.csproj
+
+      - name: Build core projects
+        run: |
+          dotnet build src/VoxFlow.Core/VoxFlow.Core.csproj --no-restore
+          dotnet build src/VoxFlow.Cli/VoxFlow.Cli.csproj --no-restore
+          dotnet build src/VoxFlow.McpServer/VoxFlow.McpServer.csproj --no-restore
+
+      - name: Run core tests
+        run: |
+          dotnet test tests/VoxFlow.Core.Tests/VoxFlow.Core.Tests.csproj --no-restore --logger "trx;LogFileName=VoxFlow.Core.Tests.trx"
+          dotnet test tests/VoxFlow.Cli.Tests/VoxFlow.Cli.Tests.csproj --no-restore --logger "trx;LogFileName=VoxFlow.Cli.Tests.trx"
+          dotnet test tests/VoxFlow.McpServer.Tests/VoxFlow.McpServer.Tests.csproj --no-restore --logger "trx;LogFileName=VoxFlow.McpServer.Tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-results
+          path: |
+            tests/**/TestResults/*.trx
+
+  # Build the Mac Catalyst desktop app and run the headless desktop test suite on macOS.
+  desktop:
+    name: Desktop
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install MAUI workload
+        run: dotnet workload install maui-maccatalyst
+
+      - name: Restore desktop projects
+        run: |
+          dotnet restore src/VoxFlow.Desktop/VoxFlow.Desktop.csproj
+          dotnet restore tests/VoxFlow.Desktop.Tests/VoxFlow.Desktop.Tests.csproj
+
+      - name: Build desktop app
+        run: dotnet build src/VoxFlow.Desktop/VoxFlow.Desktop.csproj -f net9.0-maccatalyst --no-restore
+
+      # Real Desktop UI automation is intentionally excluded from default CI because it is slower
+      # and depends on a more specialized interactive macOS environment than the headless suite.
+      - name: Run desktop tests
+        run: |
+          dotnet test tests/VoxFlow.Desktop.Tests/VoxFlow.Desktop.Tests.csproj --no-restore --logger "trx;LogFileName=VoxFlow.Desktop.Tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-results
+          path: |
+            tests/**/TestResults/*.trx

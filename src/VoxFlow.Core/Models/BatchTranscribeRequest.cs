@@ -1,5 +1,8 @@
 namespace VoxFlow.Core.Models;
 
+/// <summary>
+/// Describes a batch transcription run requested by a host.
+/// </summary>
 public sealed record BatchTranscribeRequest(
     string InputDirectory,
     string OutputDirectory,

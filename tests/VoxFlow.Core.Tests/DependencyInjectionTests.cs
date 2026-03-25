@@ -8,6 +8,12 @@ namespace VoxFlow.Core.Tests;
 public class DependencyInjectionTests
 {
     [Fact]
+    public void AddVoxFlowCore_NullServices_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => ServiceCollectionExtensions.AddVoxFlowCore(null!));
+    }
+
+    [Fact]
     public void AddVoxFlowCore_RegistersAllInterfaces()
     {
         var services = new ServiceCollection();

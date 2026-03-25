@@ -4,10 +4,18 @@ using VoxFlow.Core.Services;
 
 namespace VoxFlow.Core.DependencyInjection;
 
+/// <summary>
+/// Registers the shared VoxFlow core services used by CLI, Desktop, and MCP hosts.
+/// </summary>
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// Adds the core transcription pipeline services to the supplied service collection.
+    /// </summary>
     public static IServiceCollection AddVoxFlowCore(this IServiceCollection services)
     {
+        ArgumentNullException.ThrowIfNull(services);
+
         services.AddSingleton<IConfigurationService, ConfigurationService>();
         services.AddSingleton<IValidationService, ValidationService>();
         services.AddSingleton<IAudioConversionService, AudioConversionService>();

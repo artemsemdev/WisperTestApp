@@ -13,7 +13,7 @@ namespace VoxFlow.Core.Services;
 /// <summary>
 /// Loads, validates, and downloads Whisper models used by the application.
 /// </summary>
-internal sealed class ModelService : IModelService
+internal sealed class ModelService : IModelService, IDisposable
 {
     private WhisperFactory? _cachedFactory;
     private string? _cachedModelPath;
@@ -26,13 +26,20 @@ internal sealed class ModelService : IModelService
         TranscriptionOptions options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         // Cache by model path so repeated transcriptions reuse the same native model load, but config changes still force a reload.
         if (_cachedFactory != null && _cachedModelPath == options.ModelFilePath)
             return _cachedFactory;
 
-        _cachedFactory = await CreateFactoryInternalAsync(options, cancellationToken);
+        var newFactory = await CreateFactoryInternalAsync(options, cancellationToken);
+        var previousFactory = _cachedFactory;
+
+        _cachedFactory = newFactory;
         _cachedModelPath = options.ModelFilePath;
-        return _cachedFactory;
+        previousFactory?.Dispose();
+
+        return newFactory;
     }
 
     /// <summary>
@@ -40,6 +47,8 @@ internal sealed class ModelService : IModelService
     /// </summary>
     public ModelInfo InspectModel(TranscriptionOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         var fileInfo = new FileInfo(options.ModelFilePath);
         var exists = fileInfo.Exists;
         var fileSizeBytes = exists ? fileInfo.Length : (long?)null;
@@ -66,6 +75,13 @@ internal sealed class ModelService : IModelService
             fileSizeBytes,
             isLoadable,
             needsDownload);
+    }
+
+    public void Dispose()
+    {
+        _cachedFactory?.Dispose();
+        _cachedFactory = null;
+        _cachedModelPath = null;
     }
 
     /// <summary>

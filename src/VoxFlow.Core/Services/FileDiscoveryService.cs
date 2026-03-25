@@ -17,26 +17,39 @@ internal sealed class FileDiscoveryService : IFileDiscoveryService
     /// <summary>
     /// Scans the configured input directory for files matching the batch file pattern.
     /// </summary>
-    public IReadOnlyList<DiscoveredFile> DiscoverInputFiles(BatchOptions batchOptions)
+    public IReadOnlyList<DiscoveredFile> DiscoverInputFiles(BatchOptions batchOptions, int? maxFiles = null)
     {
+        ArgumentNullException.ThrowIfNull(batchOptions);
+
+        if (maxFiles is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxFiles), "maxFiles must be greater than zero when specified.");
+        }
+
         if (!Directory.Exists(batchOptions.InputDirectory))
         {
             throw new InvalidOperationException($"Batch input directory not found: {batchOptions.InputDirectory}");
         }
 
-        var matchingFiles = Directory.GetFiles(batchOptions.InputDirectory, batchOptions.FilePattern)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        IEnumerable<string> matchingFiles = Directory.EnumerateFiles(batchOptions.InputDirectory, batchOptions.FilePattern)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
 
-        if (matchingFiles.Length == 0)
+        if (maxFiles.HasValue)
+        {
+            matchingFiles = matchingFiles.Take(maxFiles.Value);
+        }
+
+        var discoveredPaths = matchingFiles.ToArray();
+
+        if (discoveredPaths.Length == 0)
         {
             throw new InvalidOperationException(
                 $"No files matching '{batchOptions.FilePattern}' found in: {batchOptions.InputDirectory}");
         }
 
-        var discoveredFiles = new List<DiscoveredFile>(matchingFiles.Length);
+        var discoveredFiles = new List<DiscoveredFile>(discoveredPaths.Length);
 
-        foreach (var inputPath in matchingFiles)
+        foreach (var inputPath in discoveredPaths)
         {
             var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(inputPath);
             var outputPath = Path.Combine(batchOptions.OutputDirectory, $"{fileNameWithoutExtension}.txt");

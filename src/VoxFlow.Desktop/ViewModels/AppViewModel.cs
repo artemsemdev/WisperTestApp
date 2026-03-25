@@ -7,6 +7,9 @@ using VoxFlow.Desktop.Services;
 
 namespace VoxFlow.Desktop.ViewModels;
 
+/// <summary>
+/// Coordinates the desktop UI state machine for single-file transcription.
+/// </summary>
 public class AppViewModel : INotifyPropertyChanged
 {
     private readonly ITranscriptionService _transcriptionService;
@@ -24,9 +27,12 @@ public class AppViewModel : INotifyPropertyChanged
     public AppViewModel(
         ITranscriptionService transcriptionService,
         IValidationService validationService,
-        IConfigurationService configService,
-        IModelService modelService)
+        IConfigurationService configService)
     {
+        ArgumentNullException.ThrowIfNull(transcriptionService);
+        ArgumentNullException.ThrowIfNull(validationService);
+        ArgumentNullException.ThrowIfNull(configService);
+
         _transcriptionService = transcriptionService;
         _validationService = validationService;
         _configService = configService;
@@ -80,6 +86,9 @@ public class AppViewModel : INotifyPropertyChanged
 
     public string? CurrentFileName => _lastFilePath is not null ? Path.GetFileName(_lastFilePath) : null;
 
+    /// <summary>
+    /// Loads effective configuration, runs startup validation, and initializes the UI state.
+    /// </summary>
     public async Task InitializeAsync()
     {
         var options = await _configService.LoadAsync();
@@ -88,6 +97,9 @@ public class AppViewModel : INotifyPropertyChanged
         CurrentState = AppState.Ready;
     }
 
+    /// <summary>
+    /// Starts transcription for the selected file and updates the UI as progress changes.
+    /// </summary>
     public async Task TranscribeFileAsync(string filePath)
     {
         System.Diagnostics.Debug.WriteLine($"[AppViewModel] TranscribeFileAsync started: {filePath}");
@@ -95,12 +107,14 @@ public class AppViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CurrentFileName));
         CurrentState = AppState.Running;
         ErrorMessage = null;
-        _cts = new CancellationTokenSource();
+        _cts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _cts = cts;
         var progress = new BlazorProgressHandler(this);
         try
         {
             var request = new TranscribeFileRequest(filePath);
-            TranscriptionResult = await _transcriptionService.TranscribeFileAsync(request, progress, _cts.Token);
+            TranscriptionResult = await _transcriptionService.TranscribeFileAsync(request, progress, cts.Token);
             CurrentState = TranscriptionResult.Success ? AppState.Complete : AppState.Failed;
             if (!TranscriptionResult.Success)
                 ErrorMessage = string.Join("; ", TranscriptionResult.Warnings);
@@ -116,14 +130,28 @@ public class AppViewModel : INotifyPropertyChanged
             ErrorMessage = ex.Message;
             CurrentState = AppState.Failed;
         }
+        finally
+        {
+            if (ReferenceEquals(_cts, cts))
+            {
+                _cts.Dispose();
+                _cts = null;
+            }
+        }
         System.Diagnostics.Debug.WriteLine($"[AppViewModel] TranscribeFileAsync finished. State={CurrentState}");
     }
 
+    /// <summary>
+    /// Re-runs transcription for the previously selected file when one is available.
+    /// </summary>
     public async Task RetryAsync()
     {
         if (_lastFilePath != null) await TranscribeFileAsync(_lastFilePath);
     }
 
+    /// <summary>
+    /// Returns the UI to its ready state and clears transient run data.
+    /// </summary>
     public void GoToReady()
     {
         CurrentState = AppState.Ready;
