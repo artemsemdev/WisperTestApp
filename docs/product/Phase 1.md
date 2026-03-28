@@ -1,302 +1,238 @@
-# Phase 1: Shared Core, Desktop Minimum, Packaging, and First Run
+# VoxFlow Phase 1
 
-Derived from [ROADMAP.md](./ROADMAP.md). This phase combines the old foundation and first-run work into one delivery phase.
+## Phase Goal
 
-## Goal
+Ship a stable, demoable macOS Desktop single-file transcription workflow and back it with enough test coverage that ongoing delivery can stay disciplined.
 
-Keep every feature currently described in `PRD.md`, move that behavior into shared services, add a macOS desktop app, package it, and make first run predictable enough that a user can install and produce a transcript without reading source code.
+This phase intentionally does not try to finish the entire PRD. It focuses on the most visible execution path in the current repo:
 
-MCP remains supported in Phase 1, but it is not part of the Phase 1 desktop UI scope.
+- Desktop launch
+- startup validation handling
+- single-file intake
+- running progress
+- failure and cancel recovery
+- result review actions
 
-## Desktop UI Stack
+## Why This Is Phase 1
 
-Phase 1 should use Blazor Hybrid for the desktop UI.
+The repository already has:
 
-Practical decision:
+- a shared Core transcription pipeline
+- a working CLI
+- batch support in CLI/Core
+- MCP tools and path safety
+- a Desktop app with real UI automation already covering launch and happy path
 
-- first supported desktop platform: macOS
-- UI technology: Blazor components
-- UI implementation: HTML, CSS, and C# components
-- recommended desktop host for Phase 1: .NET MAUI Blazor Hybrid
+The immediate delivery gap is therefore not foundational engineering. It is product-surface closure:
 
-Platform note:
+- finish the Desktop UI contract
+- make Desktop behavior safe and truthful
+- close the remaining test coverage gaps
 
-- Linux desktop support is not Phase 1 scope
-- if Linux support becomes necessary later, `Photino.Blazor` can be evaluated then
+## Phase 1 Scope
 
-## Must Keep From the Current Product
+In scope:
 
-- startup validation
-- audio conversion with `ffmpeg`
-- model reuse, download, and inspection
-- configured languages and language selection
-- anti-hallucination decoder settings
-- transcript filtering
-- progress reporting
-- cancellation
-- plain-text result writing
-- batch processing
-- MCP tools, prompts, and resource access
+- Desktop UI contract fixes from `docs/product/DESKTOP_UI_SPEC.md`
+- Desktop state-management hardening
+- Desktop fast tests
+- Desktop real UI automation
+- enough doc alignment to support iterative shipping
 
-## What To Implement
+Out of scope:
 
-### 1. Shared Application Layer
+- Desktop batch UI
+- Desktop settings editor
+- Windows/Linux desktop support
+- new MCP features
+- CLI feature expansion
+- notarized release pipeline
 
-Move the current workflow behind shared services that can be used by desktop, CLI, and MCP.
+## Phase 1 Success Criteria
 
-Minimum service surface:
+- Desktop Ready, Running, Failed, and Complete states behave consistently and truthfully
+- no file intake path can bypass blocked startup validation or invalid workflow state
+- transcript preview and copy behavior are honest and consistent across Desktop runtime paths
+- the fast Desktop suite covers the corrected behavior
+- the real UI suite covers more than launch and happy path
+- the repo has a clear first-wave GitHub backlog and release gate
 
-- `ValidateEnvironment`
-- `TranscribeFile`
-- `TranscribeBatch`
-- `InspectModel`
-- `ReadTranscript`
-- `GetEffectiveConfig`
+## Phase 1 Workstreams
 
-Also required:
+### Workstream A: Desktop UI Contract
 
-- unified progress events
-- unified warning and error payloads
-- cancellation support
-- typed request and response DTOs
+Target outcome:
 
-### 2. Move Current PRD Logic Out of Host-Specific Code
+- the Desktop app matches the actual single-file local workflow documented in the PRD and UI spec
 
-Refactor the current implementation so the following are not tied to the CLI entry point:
+Deliverables:
 
-- config loading and effective config resolution
-- startup validation checks
-- `ffmpeg` wrapper and WAV conversion
-- model provisioning and inspection
-- language selection
-- decoder settings
-- transcript filtering
-- result writing
-- batch discovery and summary generation
+- corrected Ready-screen copy
+- guarded file intake
+- cleaned-up run transitions
+- improved Running progress semantics
+- hardened Complete-screen actions
 
-Rules:
+### Workstream B: Desktop Test Gate
 
-- no business logic in desktop view models
-- no business logic in Blazor components
-- no second transcription pipeline for desktop
-- no console-only progress as the source of truth
-- no MAUI or Blazor dependency inside the shared core
+Target outcome:
 
-### 3. Desktop App Minimum
+- Desktop regressions are caught early and visibly
 
-Build only the minimum desktop surface that is useful:
+Deliverables:
 
-- Blazor Hybrid shell running on macOS
-- environment status
-- config path or settings access
-- input file picker
-- drag-and-drop file input (macOS table stakes)
-- single-file transcription
-- progress and warnings
-- transcript preview
-- output path and "open folder" action
-- model status
+- expanded `tests/VoxFlow.Desktop.Tests`
+- expanded `tests/VoxFlow.Desktop.UiTests`
+- stable automation ids and tracked state
 
-Recommended first screens:
+### Workstream C: Operational Clarity
 
-- Home or Status
-- Transcribe
-- Result
-- Settings
+Target outcome:
 
-Desktop-specific integrations that belong in the shell layer:
+- a solo developer can build, test, and demo the active product without reading the whole repo
 
-- file picker
-- drag-and-drop handler (NSView drop delegate or equivalent)
-- open-folder action
-- clipboard support if needed
-- any macOS-specific shell behavior (e.g., dock icon, app menu)
+Deliverables:
 
-Explicitly excluded from the Phase 1 desktop UI:
+- explicit smoke routine
+- status docs aligned with the current repo
+- manual demo-release checklist
 
-- batch UI
-- MCP tool list
-- MCP prompt list
-- MCP server start or stop controls
-- MCP configuration screens
-- MCP diagnostics screens
-- MCP quickstart or onboarding UI
+## Phase 1 Issue Set
 
-### 4. CLI and MCP Migration
+### A1. Correct Ready-screen copy and capability messaging
 
-Rewire existing hosts to the shared core.
+Acceptance criteria:
 
-CLI:
+- Ready state describes one local audio file
+- no `upload` or `multiple files` claims remain
+- drag-and-drop wording is runtime-aware
 
-- keep the current CLI behavior and output contract
-- call shared services instead of host-specific workflow code
+### A2. Enforce Ready-state start guard in AppViewModel
 
-MCP:
+Acceptance criteria:
 
-- keep current tools, prompts, and resource behavior
-- keep path policy in the MCP host
-- call shared services for actual work
+- blocked validation cannot start a run
+- invalid workflow states cannot start a run
+- tests cover the guard
 
-### 5. Packaging and Distribution
+### A3. Make shell-level drag-and-drop obey the Ready-state contract
 
-Produce versioned, signed release artifacts for macOS.
+Acceptance criteria:
 
-Required:
+- drop cannot bypass blocked Ready
+- drop cannot start outside the valid Ready state
+- unsupported dropped files fail before `Running`
 
-- packaged desktop build (.app bundle inside .dmg or .pkg)
-- Apple Developer ID code signing
-- notarization via `notarytool` (required for Gatekeeper to allow install)
-- checksums (SHA-256)
-- install docs shipped with the release (not deferred to Phase 3)
-- uninstall or cleanup notes
-- versioned release notes
+### A4. Clear transient Desktop state on new run, retry, and cancel
 
-Decisions that must be explicit:
+Acceptance criteria:
 
-- whether `ffmpeg` is bundled or externally installed
-- model storage location (`~/Library/Application Support/VoxFlow/` recommended)
-- temp/output defaults
-- minimum macOS version target
-- whether to use Hardened Runtime (required for notarization)
+- new runs start clean
+- cancel returns to a clean Ready state
+- retries do not leak stale state
 
-Code signing notes:
+### A5. Improve Running-screen progress semantics and labels
 
-- Without notarization, macOS 10.15+ users see "app is damaged" or Gatekeeper blocks
-- Apple Developer ID costs $99/year but is required for distribution outside the Mac App Store
-- If cost is a blocker, document the `xattr -cr` workaround in install docs and plan notarization for Phase 4
+Acceptance criteria:
 
-### 6. First-Run Dependency Bootstrap
+- numeric percent is visible
+- labels are human-readable
+- progressbar semantics exist
+- starting state is visible before first progress event
 
-Handle first-run requirements inside the product, not only in docs.
+### A6. Normalize preview and full-transcript copy behavior
 
-Required:
+Acceptance criteria:
 
-- dependency readiness check
-- model download or provisioning status
-- failure states for missing `ffmpeg`, missing model, unwritable directories, and invalid config
-- retry path for recoverable setup failures
+- preview rules are consistent across Desktop runtime paths
+- full transcript is copied when available
+- preview truncation or preview-unavailable state is explicit
 
-### 7. First-Run UX
+### A7. Surface startup warnings and non-fatal Complete-screen action errors
 
-The desktop app should show a clear state machine:
+Acceptance criteria:
 
-- not ready
-- ready
-- running
-- failed
-- complete
+- non-blocking startup warnings are visible
+- missing result metadata disables or hides invalid actions
+- copy/open-folder failures remain non-fatal and visible
 
-Required UI:
+### B1. Expand fast Desktop tests for the updated UI contract
 
-- actionable validation results
-- one obvious path to a first transcript
-- success screen with transcript preview and output location
+Acceptance criteria:
 
-### 8. Minimum Ship Docs
+- ViewModel and component tests cover the new guard, cleanup, warning, progress, and result rules
 
-Phase 1 must ship with at least these docs alongside the release:
+### B2. Extend the Desktop automation bridge tracked ids
 
-- install instructions (download, verify checksum, install, Gatekeeper notes)
-- first-run guide (launch, environment check, first transcription)
-- config reference (appsettings.json fields, defaults, overrides)
-- known limitations
-- uninstall instructions
-
-These are not marketing docs. They are the minimum a user needs to install and succeed without reading source code.
-
-### 9. Trust Baseline
-
-Add only the trust work that directly helps product use:
-
-- small benchmark corpus
-- known limitations doc
-- run detail summary showing:
-  - model
-  - language
-  - warnings
-  - output path
-  - config summary
-
-Benchmark scope should stay small and practical:
-
-- clean speech
-- noisy speech
-- difficult audio likely to trigger hallucinations
-
-### 10. Tests and Regression Gates
-
-Preserve or add tests for:
-
-- config loading
-- startup validation
-- audio conversion wrapper
-- language selection
-- filtering
-- result writing
-- batch behavior
-- MCP path policy and tool behavior
-- shared-service integration
-- desktop smoke path
-
-Desktop-specific smoke coverage:
-
-- the macOS desktop app starts
-- the Blazor UI loads
-- validation results render
-- file selection reaches the transcription workflow
-- progress updates render
-- success state shows output path and transcript preview
-
-## Out of Scope
-
-- Full transcript workspace
-- Full batch desktop UI
-- MCP UI, MCP setup UI, and MCP diagnostics UI inside the desktop app
-- New AI workflow features
-- Linux desktop support
-- Windows desktop support if it slows down macOS delivery
-- Reusing the Blazor UI as a separate web application in Phase 1
-
-## Implementation Order
-
-1. Freeze shared DTOs and effective-config shape.
-2. Extract config, validation, conversion, and model services.
-3. Extract the single-file transcription workflow.
-4. Extract batch, inspect-model, and read-transcript services.
-5. Rewire CLI to the shared core.
-6. Rewire MCP to the shared core.
-7. Set up Apple Developer ID and signing pipeline early (do not defer).
-8. Create the macOS desktop shell with .NET MAUI Blazor Hybrid.
-9. Build the Blazor UI for the minimum desktop flow including drag-and-drop.
-10. Add shell adapters for file picker, drag-and-drop, open-folder, and UI state mapping.
-11. Build macOS packaging (.dmg or .pkg), signing, and notarization scripts.
-12. Finalize `ffmpeg` and model bootstrap behavior.
-13. Implement first-run state handling in the desktop app.
-14. Write install, first-run, and config docs.
-15. Add the run detail summary and known limitations doc.
-16. Create the minimum benchmark corpus and release gate.
-17. Run regression tests across desktop, CLI, and MCP.
-
-## Practical Risks
-
-- Blazor components can become a second business-logic layer if state and workflow calls are not kept in services.
-- MAUI-specific code can leak into the shared core if boundaries are not kept strict.
-- Packaging and notarization can become the schedule driver — set up signing early.
-- Drag-and-drop may require native macOS interop if Blazor WebView does not support it natively.
-- First-run UX can become vague if the app does not distinguish setup failure from transcription failure.
-- Batch support will regress if only the single-file path is tested.
-- MCP can silently break if DTOs change without tool-level tests.
-
-## Done When
-
-- all current `PRD.md` features work through the shared core
-- a supported macOS user can install from a release
-- a macOS Blazor Hybrid desktop app can validate the environment and transcribe a file
-- dependency failures are actionable
-- known limitations are documented
-- install and first-run docs ship with the release
-- a small benchmark baseline runs before release
-- CLI still works
-- MCP still works
-- the desktop app does not try to surface MCP features in Phase 1
-- no host has its own duplicate transcription logic
+Acceptance criteria:
+
+- startup error and validation-message visibility are exposed to the UI suite
+- existing scenarios keep passing
+
+### B3. Add real UI scenario for startup failure and blocked-ready
+
+Acceptance criteria:
+
+- one real UI scenario covers startup retry
+- one real UI scenario covers Ready Blocked
+
+### B4. Add real UI scenario for cancel and failure recovery
+
+Acceptance criteria:
+
+- cancel returns to Ready without stale state
+- failure recovery remains green end-to-end
+
+### C1. Document the local config and smoke workflow for all active hosts
+
+Acceptance criteria:
+
+- Desktop, CLI, and MCP launch contracts are explicit
+- one recommended smoke routine exists
+
+### C2. Align status docs with the actual repo state
+
+Acceptance criteria:
+
+- README, setup docs, and architecture notes no longer disagree about current Desktop status
+
+### C3. Create a demo-ready macOS release checklist
+
+Acceptance criteria:
+
+- build, smoke, package, and verification steps are documented
+- known release gaps are called out explicitly
+
+## Suggested PR Sequence
+
+1. `A1` Ready-screen copy cleanup
+2. `A2` ViewModel start guard
+3. `A3` shell-level drag-and-drop guard
+4. `A4` transient state cleanup
+5. `A5` Running-screen progress improvements
+6. `A6` preview and copy normalization
+7. `A7` warnings and non-fatal action errors
+8. `B1` fast-test expansion
+9. `B2` automation bridge update
+10. `B3` real UI startup/blocked-ready coverage
+11. `B4` real UI cancel/failure coverage
+12. `C1` local smoke workflow docs
+13. `C2` status-doc alignment
+14. `C3` demo-release checklist
+
+## Phase 1 Release Gate
+
+Minimum verification before calling Phase 1 complete:
+
+- `dotnet test tests/VoxFlow.Desktop.Tests/VoxFlow.Desktop.Tests.csproj`
+- `./scripts/run-desktop-ui-tests.sh --filter AppStartsSuccessfully_AndReadyScreenIsVisible`
+- `./scripts/run-desktop-ui-tests.sh --filter HappyPath_UserSelectsFile_SeesRunningState_AndGetsResult`
+- targeted real UI filters for the new blocked-ready and cancel/failure scenarios
+
+## After Phase 1
+
+Only after Phase 1 is complete should the active roadmap move to:
+
+- broader cross-host polish
+- packaging and release maturity
+- post-MVP scope such as Desktop batch UI or settings UI
