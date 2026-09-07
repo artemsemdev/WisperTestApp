@@ -236,6 +236,6 @@ jobs:
           needs = json.load(sys.stdin)
           bad = {k: v["result"] for k, v in needs.items() if v["result"] in ("failure", "cancelled")}
           for k, v in needs.items():
-              print(f"{k}: {v['result']}")
+              print(k, ":", v["result"])
           sys.exit(1 if bad else 0)
           '
