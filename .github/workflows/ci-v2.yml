@@ -1,0 +1,84 @@
+name: CI v2
+
+# Validate the v2 native Swift rewrite that lives under v2/ (see issue #105).
+# Runs only when v2/ (or this workflow) changes; the .NET v1 code is covered by ci.yml.
+on:
+  push:
+    branches:
+      - master
+      - develop
+    paths:
+      - 'v2/**'
+      - '.github/workflows/ci-v2.yml'
+  pull_request:
+    paths:
+      - 'v2/**'
+      - '.github/workflows/ci-v2.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test (Swift)
+    # macos-15 runners are Apple Silicon, the only target v2 supports.
+    runs-on: macos-15
+
+    defaults:
+      run:
+        working-directory: v2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The image defaults to Xcode 16.x; v2 is developed with Xcode 26.x. Pick the newest 26.
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache SPM packages and DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            v2/VoxFlowKit/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild -scheme VoxFlow -destination 'platform=macOS' build | tee build.log
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild -scheme VoxFlow -destination 'platform=macOS' test -resultBundlePath TestResults.xcresult | tee test.log
+
+      - name: Package tests without Xcode project
+        run: swift test
+        working-directory: v2/VoxFlowKit
+
+      - name: Upload logs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-test-results
+          path: |
+            v2/build.log
+            v2/test.log
+            v2/TestResults.xcresult
+          if-no-files-found: ignore
