@@ -49,9 +49,11 @@ macOS build:
 |---|---|
 | only `v2/docs/**`, `v2/design/**`, `*.md` | nothing on macOS; `result` is green |
 | `v2/scripts/**` | Python unit tests for the CI scripts (Ubuntu) |
-| `v2/VoxFlowKit/**` | `swift test` for the changed modules and their dependents, derived from `swift package describe` by `v2/scripts/affected_tests.py` |
-| `v2/VoxFlow/**`, `v2/VoxFlowTests/**`, `v2/project.yml`, the workflow itself, or PR label `ci:full` | full `VoxFlow` scheme: build + all tests |
+| `v2/VoxFlowKit/**`, modules the app does not link | `swift test` for the changed modules and their dependents, derived from `swift package describe` by `v2/scripts/affected_tests.py` |
+| `v2/VoxFlow/**`, `v2/VoxFlowTests/**`, `v2/project.yml`, `Package.swift`/`Package.resolved`, a module the app links (per `product:` in `project.yml`), any other path under `v2/`, the workflow itself, or PR label `ci:full` | full `VoxFlow` scheme: build + all tests |
 
-Pushes to `develop`/`master` and manual runs always run the full scheme. Branch
-protection needs only the `CI v2 / result` check. `codeql-v2.yml` runs CodeQL for Swift on
-pushes to `develop`/`master`, weekly, and on demand.
+Every pull request, including ones that touch only the v1 .NET tree, runs the classify job
+and `result` (seconds on Ubuntu) so the required check always exists. Adding the `ci:full`
+label to an open PR starts a full run. Pushes to `develop`/`master` and manual runs always
+run the full scheme. Branch protection needs only the `CI v2 / result` check. `codeql-v2.yml`
+runs CodeQL for Swift on pushes to `develop`/`master`, weekly, and on demand.
