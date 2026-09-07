@@ -20,6 +20,9 @@ concurrency:
   group: ci-v2-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     name: Build & test (Swift)
