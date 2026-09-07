@@ -1,6 +1,6 @@
 # VoxFlow v2
 
-Native macOS dictation and file transcription, entirely on-device. Swift 6, SwiftUI,
+Native macOS dictation and file transcription, fully on-device. Swift 6, SwiftUI,
 whisper.cpp, macOS 15+, Apple Silicon.
 
 This directory is the v2 rewrite growing on the `develop` branch until promotion (see
