@@ -26,4 +26,9 @@ struct SidebarPageTests {
     func defaultPage() {
         #expect(SidebarPage.default == .home)
     }
+
+    @Test("key equivalents are the digits 1…7")
+    func keyEquivalents() {
+        #expect(SidebarPage.allCases.map { String($0.keyEquivalent.character) } == ["1", "2", "3", "4", "5", "6", "7"])
+    }
 }

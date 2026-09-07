@@ -1,24 +1,17 @@
 import SwiftUI
 
-/// Main window content (design 1c): sidebar + detail, 1120×720 by default, ⌘1…⌘7 jump to pages.
+/// Main window content (design 1c): sidebar + detail. ⌘1…⌘7 live in VoxFlowApp's commands.
 struct MainWindow: View {
-    @State private var selection: SidebarPage = .default
+    @Environment(Navigation.self) private var navigation
 
     var body: some View {
+        @Bindable var navigation = navigation
         NavigationSplitView {
-            SidebarView(selection: $selection)
+            SidebarView(selection: $navigation.page)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
-            PlaceholderPageView(page: selection)
+            PlaceholderPageView(page: navigation.page)
         }
         .frame(minWidth: 900, minHeight: 600)
-        .background {
-            // Hidden buttons give ⌘1…⌘7 without a custom menu; replaced by a Commands menu in phase 4.
-            ForEach(SidebarPage.allCases) { page in
-                Button("") { selection = page }
-                    .keyboardShortcut(KeyEquivalent(Character("\(page.shortcutNumber)")), modifiers: .command)
-                    .hidden()
-            }
-        }
     }
 }
