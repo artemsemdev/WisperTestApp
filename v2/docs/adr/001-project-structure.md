@@ -34,3 +34,4 @@ edited mostly by AI agents working on small, well-bounded files.
 - Contributors and CI need XcodeGen (`brew install xcodegen`, ~30 s).
 - New concerns get a new module and test target, not a folder in the app.
 - Strict concurrency makes AppKit bridging more verbose; accepted for dictation safety.
+- Code signing: ad-hoc (`CODE_SIGN_IDENTITY: -`) through phase 2 so CI needs no certificate. Because macOS keys Accessibility and Microphone grants to the signing identity, phase 3 (dictation) must switch local builds to a stable identity (Apple Development or a persistent self-signed certificate) before development starts; Developer ID signing arrives with phase 7.
