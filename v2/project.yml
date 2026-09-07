@@ -16,6 +16,9 @@ settings:
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 packages:
   VoxFlowKit:
     path: VoxFlowKit
@@ -34,6 +37,8 @@ targets:
         CFBundleDisplayName: VoxFlow
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: "© 2026 Artem Semenov"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.artemsem.voxflow
@@ -57,7 +62,7 @@ schemes:
       config: Debug
     test:
       config: Debug
-      gatherCoverageData: false
+      gatherCoverageData: true
       targets:
         - VoxFlowTests
         - package: VoxFlowKit/VoxFlowCoreTests
