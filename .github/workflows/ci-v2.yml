@@ -55,6 +55,11 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           list-files: json
+          # Default quantifier ('some') matches a rule if ANY of its patterns match, so a
+          # negated pattern such as '!v2/**/*.md' does not act as an exclusion once 'v2/**'
+          # already matched — 'other' would wrongly catch every v2/*.md file. This makes a
+          # negated pattern a real exclusion.
+          predicate-quantifier: 'some-with-excludes'
           filters: |
             docs:
               - 'v2/docs/**'
