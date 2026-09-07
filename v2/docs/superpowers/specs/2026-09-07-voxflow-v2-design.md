@@ -141,7 +141,7 @@ GitFlow: `master` (released, tagged) · `develop` (integration) · `feature/<iss
 | 4 | Rest of main window and all Settings, menu bar, notifications, rule-based styles | Full design minus LLM and MCP | #111 |
 | 5 | Style cleanup on llama.cpp (Qwen2.5 3B), Re-style | Formal / Casual / Very casual | #112 |
 | 6 | MCP server | Claude Desktop / Cursor connect | #113 |
-| 7 | Release: signing, notarization, .dmg, GitHub Release | Installable image | new |
+| 7 | Release: signing, notarization, .dmg, GitHub Release | Installable image | #115 |
 
 **Promotion (after phase 2).** `release/2.0.0` from `develop`: move `v2/` to the repository
 root, delete the .NET tree, rename `ci-v2.yml` → `ci.yml` and `codeql-v2.yml` →
