@@ -5,8 +5,8 @@ name: CI v2
 on:
   push:
     branches:
-      - main
       - master
+      - develop
     paths:
       - 'v2/**'
       - '.github/workflows/ci-v2.yml'
@@ -20,11 +20,15 @@ concurrency:
   group: ci-v2-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     name: Build & test (Swift)
-    # macos-15 runners are Apple Silicon, which is the only target v2 supports.
+    # macos-15 runners are Apple Silicon, the only target v2 supports.
     runs-on: macos-15
+    timeout-minutes: 30
 
     defaults:
       run:
@@ -34,20 +38,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The image defaults to Xcode 16.x; v2 is developed with Xcode 26.x. Pick the newest 26.
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$XCODE" ] || { echo "::error::No Xcode 26.x on this runner image"; exit 1; }
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
       - name: Cache SPM packages and DerivedData
         uses: actions/cache@v4
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
-            v2/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('v2/**/Package.resolved', 'v2/Package.swift') }}
+            v2/VoxFlowKit/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-
             ${{ runner.os }}-spm-
 
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          swift --version
+      - name: Generate Xcode project
+        run: xcodegen generate
 
       - name: Build
         run: |
@@ -58,6 +74,10 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -scheme VoxFlow -destination 'platform=macOS' test -resultBundlePath TestResults.xcresult | tee test.log
+
+      - name: Package tests without Xcode project
+        run: swift test
+        working-directory: v2/VoxFlowKit
 
       - name: Upload logs and results
         if: always()
