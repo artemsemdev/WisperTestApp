@@ -42,6 +42,10 @@ def _target_for(path: str, targets: list[dict]) -> dict | None:
     return best
 
 
+# Only `target_dependencies` (in-package targets) are walked. `product_dependencies`
+# (products of other packages) are ignored on purpose: VoxFlowKit is a single package
+# with no local sibling packages, and Package.resolved changes already select ALL.
+# Revisit if a second local package appears under v2/.
 def _dependents(targets: list[dict]) -> dict[str, set[str]]:
     """name -> names of targets that depend on it directly."""
     graph: dict[str, set[str]] = {t["name"]: set() for t in targets}
@@ -90,10 +94,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--describe-json", help="saved output of `swift package describe --type json`")
     parser.add_argument("--format", choices=("names", "regex"), default="names")
     parser.add_argument("files", nargs="*", help="changed files, paths relative to the repository root")
+    parser.add_argument("--files-json", help="JSON array of changed files (repository-relative), appended to FILES")
     args = parser.parse_args(argv)
 
+    files = list(args.files)
+    if args.files_json:
+        with open(args.files_json, encoding="utf-8") as handle:
+            files.extend(json.load(handle))
+
     relative: list[str] = []
-    for path in args.files:
+    for path in files:
         stripped = _strip_package_prefix(path, args.package_path)
         if stripped is None:
             print(ALL)

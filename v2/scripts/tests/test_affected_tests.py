@@ -75,6 +75,16 @@ class Cli(unittest.TestCase):
     def test_empty_input_prints_empty_line(self):
         self.assertEqual(self.run_cli(), "")
 
+    def test_files_json_is_read_and_merged(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(["v2/VoxFlowKit/Sources/B/Foo.swift"], fh)
+        try:
+            self.assertEqual(self.run_cli("--files-json", fh.name, "v2/VoxFlowKit/Tests/CoreTests/T.swift"),
+                             "BTests CoreTests")
+        finally:
+            pathlib.Path(fh.name).unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
