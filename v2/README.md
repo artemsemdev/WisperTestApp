@@ -42,6 +42,16 @@ committed: add usage strings such as `NSMicrophoneUsageDescription` to `project.
 
 ## CI
 
-`.github/workflows/ci-v2.yml` runs the same commands on `macos-15` for pushes to `develop`/`master`
-and PRs that touch `v2/**` (or the workflow file); `codeql-v2.yml` runs CodeQL for Swift on pushes
-to `develop`/`master`, weekly, and on demand.
+`.github/workflows/ci-v2.yml` runs a ladder so a small change does not pay for a full
+macOS build:
+
+| Changed files (PR) | What runs |
+|---|---|
+| only `v2/docs/**`, `v2/design/**`, `*.md` | nothing on macOS; `result` is green |
+| `v2/scripts/**` | Python unit tests for the CI scripts (Ubuntu) |
+| `v2/VoxFlowKit/**` | `swift test` for the changed modules and their dependents, derived from `swift package describe` by `v2/scripts/affected_tests.py` |
+| `v2/VoxFlow/**`, `v2/VoxFlowTests/**`, `v2/project.yml`, the workflow itself, or PR label `ci:full` | full `VoxFlow` scheme: build + all tests |
+
+Pushes to `develop`/`master` and manual runs always run the full scheme. Branch
+protection needs only the `CI v2 / result` check. `codeql-v2.yml` runs CodeQL for Swift on
+pushes to `develop`/`master`, weekly, and on demand.

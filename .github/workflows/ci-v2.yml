@@ -1,7 +1,14 @@
 name: CI v2
 
-# Validate the v2 native Swift rewrite that lives under v2/ (see issue #105).
-# Runs only when v2/ (or this workflow) changes; the .NET v1 code is covered by ci.yml.
+# Validate the v2 native Swift rewrite under v2/ (see issues #105, #116).
+#
+# Ladder (pull requests): a cheap Ubuntu job buckets the changed files, then
+#   docs only              → nothing else runs, `result` is green
+#   v2/scripts/** only     → Python unit tests for the CI scripts
+#   VoxFlowKit only        → swift test for the changed modules and their dependents
+#   app / project.yml / this workflow / label `ci:full` → full VoxFlow scheme (build + all tests)
+# Pushes to develop/master and manual runs always run the full scheme.
+# Branch protection requires only the `result` job.
 on:
   push:
     branches:
@@ -11,9 +18,6 @@ on:
       - 'v2/**'
       - '.github/workflows/ci-v2.yml'
   pull_request:
-    paths:
-      - 'v2/**'
-      - '.github/workflows/ci-v2.yml'
   workflow_dispatch:
 
 concurrency:
@@ -22,11 +26,135 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
+
+env:
+  PACKAGE_PATH: v2/VoxFlowKit
 
 jobs:
-  build-test:
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      package: ${{ steps.filter.outputs.package }}
+      package_files: ${{ steps.filter.outputs.package_files }}
+      app: ${{ steps.filter.outputs.app }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+      full: ${{ steps.mode.outputs.full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bucket changed files
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          list-files: shell
+          filters: |
+            docs:
+              - 'v2/docs/**'
+              - 'v2/design/**'
+              - 'v2/**/*.md'
+            scripts:
+              - 'v2/scripts/**'
+            package:
+              - 'v2/VoxFlowKit/**'
+            app:
+              - 'v2/VoxFlow/**'
+              - 'v2/VoxFlowTests/**'
+              - 'v2/project.yml'
+            workflow:
+              - '.github/workflows/ci-v2.yml'
+
+      # Full run when: not a PR (push/dispatch), the app or this workflow changed,
+      # or the PR carries the `ci:full` label.
+      - name: Decide run mode
+        id: mode
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          APP: ${{ steps.filter.outputs.app }}
+          WORKFLOW: ${{ steps.filter.outputs.workflow }}
+        run: |
+          if [ "$IS_PR" != "true" ] || [ "$HAS_LABEL" = "true" ] || [ "$APP" = "true" ] || [ "$WORKFLOW" = "true" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"; echo "::notice::Run mode: full"
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"; echo "::notice::Run mode: selective"
+          fi
+
+  script-tests:
+    name: CI script tests
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true' || needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run unit tests
+        run: python3 -m unittest discover -s v2/scripts/tests -v
+
+  package-tests:
+    name: Package tests (affected modules)
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.package == 'true'
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$XCODE" ] || { echo "::error::No Xcode 26.x on this runner image"; exit 1; }
+          sudo xcode-select -s "$XCODE"
+          swift --version
+
+      - name: Cache SPM build
+        uses: actions/cache@v4
+        with:
+          path: v2/VoxFlowKit/.build
+          key: ${{ runner.os }}-spm-build-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-spm-build-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-
+            ${{ runner.os }}-spm-build-
+
+      - name: Select affected test targets
+        id: select
+        env:
+          CHANGED: ${{ needs.changes.outputs.package_files }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # CHANGED is a shell-escaped list from paths-filter
+          FILTER=$(python3 v2/scripts/affected_tests.py --package-path "$PACKAGE_PATH" --format regex $CHANGED)
+          echo "filter=$FILTER" >> "$GITHUB_OUTPUT"
+          echo "::notice::Test filter: ${FILTER:-<none>}"
+
+      - name: Build package
+        run: swift build --package-path "$PACKAGE_PATH"
+
+      - name: Test affected modules
+        env:
+          FILTER: ${{ steps.select.outputs.filter }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FILTER" ]; then
+            echo "No test target is affected by the changed files."
+          elif [ "$FILTER" = "ALL" ]; then
+            swift test --package-path "$PACKAGE_PATH"
+          else
+            swift test --package-path "$PACKAGE_PATH" --filter "$FILTER"
+          fi
+
+  full:
     name: Build & test (Swift)
-    # macos-15 runners are Apple Silicon, the only target v2 supports.
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -89,3 +217,25 @@ jobs:
             v2/test.log
             v2/TestResults.xcresult
           if-no-files-found: ignore
+
+  # The single status check for branch protection: red if any job that ran failed
+  # or was cancelled; green when jobs were skipped by the ladder.
+  result:
+    name: result
+    needs: [changes, script-tests, package-tests, full]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          bad = {k: v["result"] for k, v in needs.items() if v["result"] in ("failure", "cancelled")}
+          for k, v in needs.items():
+              print(f"{k}: {v[\"result\"]}")
+          sys.exit(1 if bad else 0)
+          '
