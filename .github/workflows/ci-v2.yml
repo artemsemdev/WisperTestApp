@@ -28,6 +28,7 @@ jobs:
     name: Build & test (Swift)
     # macos-15 runners are Apple Silicon, the only target v2 supports.
     runs-on: macos-15
+    timeout-minutes: 30
 
     defaults:
       run:
@@ -40,7 +41,9 @@ jobs:
       # The image defaults to Xcode 16.x; v2 is developed with Xcode 26.x. Pick the newest 26.
       - name: Select Xcode 26
         run: |
-          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$XCODE" ] || { echo "::error::No Xcode 26.x on this runner image"; exit 1; }
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
           swift --version
@@ -54,8 +57,9 @@ jobs:
           path: |
             ~/Library/Developer/Xcode/DerivedData
             v2/VoxFlowKit/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}
+          key: ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-spm-${{ hashFiles('v2/VoxFlowKit/Package.swift', 'v2/**/Package.resolved') }}-
             ${{ runner.os }}-spm-
 
       - name: Generate Xcode project

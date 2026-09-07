@@ -2,6 +2,7 @@ name: CodeQL v2
 
 # CodeQL for the v2 Swift rewrite under v2/ (see issue #105).
 # CodeQL supports Swift only on macOS runners, hence macos-15 rather than ubuntu-latest.
+# Runs on pushes to develop/master, weekly, and on demand — not on every PR (a full Swift analysis takes ~25 minutes).
 on:
   push:
     branches:
@@ -10,18 +11,19 @@ on:
     paths:
       - 'v2/**'
       - '.github/workflows/codeql-v2.yml'
-  pull_request:
-    paths:
-      - 'v2/**'
-      - '.github/workflows/codeql-v2.yml'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+
+concurrency:
+  group: codeql-v2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
     name: Analyze Swift
     runs-on: macos-15
+    timeout-minutes: 45
 
     permissions:
       security-events: write
@@ -51,9 +53,12 @@ jobs:
       - name: Select Xcode 26
         if: steps.probe.outputs.has_swift == 'true'
         run: |
-          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$XCODE" ] || { echo "::error::No Xcode 26.x on this runner image"; exit 1; }
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
+          swift --version
 
       - name: Install XcodeGen
         if: steps.probe.outputs.has_swift == 'true'
@@ -71,6 +76,8 @@ jobs:
         run: |
           xcodegen generate
           xcodebuild -scheme VoxFlow -destination 'platform=macOS' build
+          # The app links only VoxFlowCore; build the whole package so CodeQL traces all nine modules.
+          swift build --package-path VoxFlowKit
 
       - name: Perform CodeQL Analysis
         if: steps.probe.outputs.has_swift == 'true'
