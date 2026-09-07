@@ -22,6 +22,7 @@ struct SidebarView: View {
                 Circle().fill(Palette.onDevice).frame(width: 8, height: 8)
                 Text("Everything on this Mac").font(.callout.weight(.semibold))
             }
+            // TODO(phase 4): derive "bytes sent" from the network counter instead of a literal.
             Text("VoxFlow \(VoxFlowVersion.string) · 0 bytes sent since install")
                 .font(.caption)
                 .foregroundStyle(.secondary)

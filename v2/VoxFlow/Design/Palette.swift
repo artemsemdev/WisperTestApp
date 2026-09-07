@@ -3,7 +3,7 @@ import SwiftUI
 /// Colors from the design's Tweaks panel (accent options) and the brand's "on-device" green.
 enum Palette {
     /// The green status dot shown on every surface (Flow Bar, menu bar, sidebar footer, Privacy).
-    static let onDevice = Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255) // #34c759
+    static let onDevice = Color(red: 48 / 255, green: 209 / 255, blue: 88 / 255) // #30d158, design status dot
 
     enum AccentName: String, CaseIterable {
         case blue, purple, pink, orange, green, graphite
