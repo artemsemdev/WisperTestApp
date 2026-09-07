@@ -3,12 +3,13 @@ name: CI v2
 # Validate the v2 native Swift rewrite under v2/ (see issues #105, #116).
 #
 # Ladder (pull requests): a cheap Ubuntu job buckets the changed files, then
-#   docs only              → nothing else runs, `result` is green
-#   v2/scripts/** only     → Python unit tests for the CI scripts
-#   VoxFlowKit only        → swift test for the changed modules and their dependents
-#   app / project.yml / this workflow / label `ci:full` → full VoxFlow scheme (build + all tests)
+#   docs only                                   → nothing else runs, `result` is green
+#   v2/scripts/** only                          → Python unit tests for the CI scripts
+#   VoxFlowKit only (modules the app does not link) → swift test for the changed modules and their dependents
+#   app, project.yml, this workflow, the package manifest, a module the app links,
+#   anything else under v2/, or PR label `ci:full`   → full VoxFlow scheme (build + all tests)
 # Pushes to develop/master and manual runs always run the full scheme.
-# Branch protection requires only the `result` job.
+# Every PR gets a `result` check; branch protection requires only that job.
 on:
   push:
     branches:
@@ -18,6 +19,8 @@ on:
       - 'v2/**'
       - '.github/workflows/ci-v2.yml'
   pull_request:
+    # `labeled` so adding `ci:full` to an open PR triggers a full run.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -37,22 +40,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      docs: ${{ steps.filter.outputs.docs }}
       scripts: ${{ steps.filter.outputs.scripts }}
       package: ${{ steps.filter.outputs.package }}
       package_files: ${{ steps.filter.outputs.package_files }}
-      app: ${{ steps.filter.outputs.app }}
-      workflow: ${{ steps.filter.outputs.workflow }}
       full: ${{ steps.mode.outputs.full }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Only pull requests are classified; pushes and manual runs always run everything.
       - name: Bucket changed files
         id: filter
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v4
         with:
-          list-files: shell
+          list-files: json
           filters: |
             docs:
               - 'v2/docs/**'
@@ -68,9 +70,44 @@ jobs:
               - 'v2/project.yml'
             workflow:
               - '.github/workflows/ci-v2.yml'
+            # Anything else under v2/ (a new package, an .xcconfig, a Makefile…) runs everything.
+            other:
+              - 'v2/**'
+              - '!v2/docs/**'
+              - '!v2/design/**'
+              - '!v2/**/*.md'
+              - '!v2/scripts/**'
+              - '!v2/VoxFlowKit/**'
+              - '!v2/VoxFlow/**'
+              - '!v2/VoxFlowTests/**'
+              - '!v2/project.yml'
 
-      # Full run when: not a PR (push/dispatch), the app or this workflow changed,
-      # or the PR carries the `ci:full` label.
+      # A package change that touches the manifest or a module the app links must also
+      # build the app, so it escalates to the full run. Linked modules are read from
+      # project.yml (`product:` lines), not maintained by hand.
+      - name: Check whether package changes reach the app
+        id: linked
+        if: github.event_name == 'pull_request' && steps.filter.outputs.package == 'true'
+        env:
+          PACKAGE_FILES: ${{ steps.filter.outputs.package_files }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re
+          files = json.loads(os.environ["PACKAGE_FILES"])
+          linked = sorted(set(re.findall(r"^\s*product:\s*(\S+)\s*$", open("v2/project.yml").read(), re.M)))
+          prefixes = tuple(f"v2/VoxFlowKit/Sources/{m}/" for m in linked)
+          reaches_app = any(
+              f.rsplit("/", 1)[-1] in ("Package.swift", "Package.resolved") or f.startswith(prefixes)
+              for f in files
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"reaches_app={'true' if reaches_app else 'false'}\n")
+          print(f"::notice::App-linked modules: {linked}; package change reaches the app: {reaches_app}")
+          PY
+
+      # Full run when: not a PR (push/dispatch), the PR carries `ci:full`, or the change
+      # touches the app, this workflow, an unbucketed v2 path, or a package part the app links.
       - name: Decide run mode
         id: mode
         env:
@@ -78,11 +115,17 @@ jobs:
           HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
           APP: ${{ steps.filter.outputs.app }}
           WORKFLOW: ${{ steps.filter.outputs.workflow }}
+          OTHER: ${{ steps.filter.outputs.other }}
+          REACHES_APP: ${{ steps.linked.outputs.reaches_app }}
         run: |
-          if [ "$IS_PR" != "true" ] || [ "$HAS_LABEL" = "true" ] || [ "$APP" = "true" ] || [ "$WORKFLOW" = "true" ]; then
-            echo "full=true" >> "$GITHUB_OUTPUT"; echo "::notice::Run mode: full"
+          set -euo pipefail
+          if [ "$IS_PR" != "true" ] || [ "$HAS_LABEL" = "true" ] || [ "$APP" = "true" ] \
+             || [ "$WORKFLOW" = "true" ] || [ "$OTHER" = "true" ] || [ "$REACHES_APP" = "true" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Run mode: full (pr=$IS_PR label=$HAS_LABEL app=$APP workflow=$WORKFLOW other=$OTHER reaches_app=${REACHES_APP:-false})"
           else
-            echo "full=false" >> "$GITHUB_OUTPUT"; echo "::notice::Run mode: selective"
+            echo "full=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Run mode: selective"
           fi
 
   script-tests:
@@ -127,12 +170,16 @@ jobs:
       - name: Select affected test targets
         id: select
         env:
-          CHANGED: ${{ needs.changes.outputs.package_files }}
+          CHANGED_JSON: ${{ needs.changes.outputs.package_files }}
         run: |
           set -euo pipefail
-          # shellcheck disable=SC2086  # CHANGED is a shell-escaped list from paths-filter
-          FILTER=$(python3 v2/scripts/affected_tests.py --package-path "$PACKAGE_PATH" --format regex $CHANGED)
-          echo "filter=$FILTER" >> "$GITHUB_OUTPUT"
+          printf '%s' "$CHANGED_JSON" > changed-files.json
+          FILTER=$(python3 v2/scripts/affected_tests.py --package-path "$PACKAGE_PATH" --format regex --files-json changed-files.json)
+          {
+            echo "filter<<VOXFLOW_EOF"
+            echo "$FILTER"
+            echo "VOXFLOW_EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "::notice::Test filter: ${FILTER:-<none>}"
 
       - name: Build package
@@ -148,7 +195,12 @@ jobs:
           elif [ "$FILTER" = "ALL" ]; then
             swift test --package-path "$PACKAGE_PATH"
           else
-            swift test --package-path "$PACKAGE_PATH" --filter "$FILTER"
+            swift test --package-path "$PACKAGE_PATH" --filter "$FILTER" 2>&1 | tee package-test.log
+            # A filter that selects nothing exits 0; treat that as a broken filter, not a pass.
+            if grep -q "Test run with 0 tests" package-test.log; then
+              echo "::error::The filter '$FILTER' selected no tests; target names or the filter format changed."
+              exit 1
+            fi
           fi
 
   full:
@@ -218,12 +270,13 @@ jobs:
             v2/TestResults.xcresult
           if-no-files-found: ignore
 
-  # The single status check for branch protection: red if any job that ran failed
-  # or was cancelled; green when jobs were skipped by the ladder.
+  # The single status check for branch protection: red if any job that ran failed or was
+  # cancelled, green when jobs were skipped by the ladder. `!cancelled()` (not `always()`)
+  # so a run superseded by a newer push posts no result at all instead of a stale red one.
   result:
     name: result
     needs: [changes, script-tests, package-tests, full]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -231,6 +284,7 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: |
+          set -euo pipefail
           echo "$RESULTS" | python3 -c '
           import json, sys
           needs = json.load(sys.stdin)
