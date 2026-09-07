@@ -3,6 +3,12 @@
 [![CI](https://github.com/artemsemdev/VoxFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/artemsemdev/VoxFlow/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/artemsemdev/VoxFlow/actions/workflows/codeql.yml/badge.svg)](https://github.com/artemsemdev/VoxFlow/actions/workflows/codeql.yml)
 
+> **v2 in progress: native Swift rewrite.** VoxFlow is being rewritten from scratch as a native
+> macOS (Apple Silicon) application. The new code grows in [`v2/`](v2/) and is tracked in
+> [issue #105](https://github.com/artemsemdev/VoxFlow/issues/105). The .NET/MAUI code below is
+> v1: it is frozen at tag `v1.0.0-final` and archived on the [`v1`](https://github.com/artemsemdev/VoxFlow/tree/v1)
+> branch. Speaker labeling, Intel Macs, and Mac Catalyst are out of scope for v2.
+
 ## Executive Summary
 
 VoxFlow is a fully local, privacy-first audio transcription system that converts speech recordings into timestamped text transcripts without sending data to any external service. It ships as a shared .NET 9 transcription core with three hosts: CLI, macOS Desktop, and MCP. By default, transcription runs entirely on-device via the local Whisper Base model through Whisper.net, and the Desktop app can fall back to the same local CLI pipeline on Intel Mac Catalyst when the in-process Whisper runtime is not viable.
