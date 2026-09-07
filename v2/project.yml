@@ -1,0 +1,71 @@
+name: VoxFlow
+options:
+  bundleIdPrefix: dev.artemsem
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    # Ad-hoc signing so local builds and CI need no team or certificate.
+    # Developer ID signing is configured in phase 7 (release pipeline).
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+packages:
+  VoxFlowKit:
+    path: VoxFlowKit
+targets:
+  VoxFlow:
+    type: application
+    platform: macOS
+    sources:
+      - path: VoxFlow
+    dependencies:
+      - package: VoxFlowKit
+        product: VoxFlowCore
+    info:
+      path: VoxFlow/Info.plist
+      properties:
+        CFBundleDisplayName: VoxFlow
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: "© 2026 Artem Semenov"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.artemsem.voxflow
+        SWIFT_EMIT_LOC_STRINGS: YES
+  VoxFlowTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: VoxFlowTests
+    dependencies:
+      - target: VoxFlow
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  VoxFlow:
+    build:
+      targets:
+        VoxFlow: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - VoxFlowTests
+        - package: VoxFlowKit/VoxFlowCoreTests
+        - package: VoxFlowKit/VoxFlowAudioTests
+        - package: VoxFlowKit/VoxFlowSpeechTests
+        - package: VoxFlowKit/VoxFlowModelsTests
+        - package: VoxFlowKit/VoxFlowFilesTests
+        - package: VoxFlowKit/VoxFlowDictationTests
+        - package: VoxFlowKit/VoxFlowStorageTests
+        - package: VoxFlowKit/VoxFlowStylingTests
+        - package: VoxFlowKit/VoxFlowMCPTests
