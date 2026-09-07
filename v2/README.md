@@ -54,4 +54,4 @@ macOS build:
 
 Pushes to `develop`/`master` and manual runs always run the full scheme. Branch
 protection needs only the `CI v2 / result` check. `codeql-v2.yml` runs CodeQL for Swift on
-pushes to `develop`/`master`, weekly, and on demand.
+pushes to `develop`/`master`, weekly, and on demand (`workflow_dispatch`).
