@@ -1,0 +1,157 @@
+import CryptoKit
+import Foundation
+import Testing
+import VoxFlowCore
+import VoxFlowTestSupport
+@testable import VoxFlowModels
+
+@Suite("ModelStore")
+struct ModelStoreTests {
+    // Two tiny "models" standing in for turbo/small; payload bytes are deterministic.
+    static func payload(_ seed: UInt8, count: Int) -> Data { Data((0..<count).map { UInt8(($0 &+ Int(seed)) % 256) }) }
+    static let bigPayload = payload(1, count: 300_000)
+    static let smallPayload = payload(2, count: 100_000)
+
+    static func descriptor(id: String, payload: Data, isDefault: Bool) -> ModelDescriptor {
+        ModelDescriptor(id: id, displayName: id, role: .speech,
+                        downloadURL: URL(string: "https://example.com/\(id).bin")!,
+                        sizeInBytes: Int64(payload.count),
+                        sha256: SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined(),
+                        languagesSummary: "test", isDefault: isDefault)
+    }
+    static let big = descriptor(id: "big", payload: bigPayload, isDefault: true)
+    static let small = descriptor(id: "small", payload: smallPayload, isDefault: false)
+
+    struct Harness {
+        let dir = TemporaryDirectory()
+        let downloader = FakeModelDownloader()
+        let settings = InMemoryKeyValueStore()
+        var freeSpace = FakeFreeSpace(available: 10_000_000_000)
+        func store() -> ModelStore {
+            ModelStore(directory: dir.url, catalog: [ModelStoreTests.big, ModelStoreTests.small],
+                       downloader: downloader, freeSpace: freeSpace, settings: settings)
+        }
+        func serveAll() async {
+            await downloader.serve(ModelStoreTests.bigPayload, at: ModelStoreTests.big.downloadURL)
+            await downloader.serve(ModelStoreTests.smallPayload, at: ModelStoreTests.small.downloadURL)
+        }
+    }
+
+    static func drain(_ stream: AsyncThrowingStream<ModelState, Error>) async throws -> [ModelState] {
+        var states: [ModelState] = []
+        for try await state in stream { states.append(state) }
+        return states
+    }
+
+    @Test("fresh directory: nothing installed, catalog default is not usable yet")
+    func freshDirectory() async {
+        let h = Harness()
+        let store = h.store()
+        #expect(await store.state(of: "big") == .notInstalled)
+        #expect(await store.installedModels(role: .speech).isEmpty)
+        #expect(await store.defaultModel(role: .speech) == nil)
+    }
+
+    @Test("install downloads, verifies and marks installed; default follows the catalog")
+    func install() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        let states = try await Self.drain(await store.install(id: "big"))
+        #expect(states.first == .downloading(bytesWritten: 65_536, total: 300_000))
+        #expect(states.contains(.verifying))
+        #expect(states.last == .installed)
+        #expect(await store.state(of: "big") == .installed)
+        #expect(await store.defaultModel(role: .speech)?.id == "big")
+        #expect(FileManager.default.fileExists(atPath: h.dir.file("big.bin").path))
+        #expect(!FileManager.default.fileExists(atPath: h.dir.file("big.bin.partial").path))
+    }
+
+    @Test("refuses to start when free space is below size + 500 MB reserve (SYS-DISK)")
+    func insufficientSpace() async throws {
+        var h = Harness()
+        await h.serveAll()
+        h.freeSpace = FakeFreeSpace(available: 300_000 + ModelStore.reserveBytes - 1)
+        let store = h.store()
+        await #expect(throws: ModelStoreError.insufficientDiskSpace(required: 300_000 + ModelStore.reserveBytes,
+                                                                  available: 300_000 + ModelStore.reserveBytes - 1)) {
+            _ = try await Self.drain(await store.install(id: "big"))
+        }
+        #expect(await h.downloader.calls.isEmpty)
+    }
+
+    @Test("going offline leaves a partial file; the next install resumes from it (ONB-04a)")
+    func resume() async throws {
+        let h = Harness()
+        await h.serveAll()
+        await h.downloader.setFailAfterBytes(131_072)
+        let store = h.store()
+        await #expect(throws: ModelStoreError.downloadInterrupted(bytesWritten: 131_072)) {
+            _ = try await Self.drain(await store.install(id: "big"))
+        }
+        #expect(await store.state(of: "big") == .paused(bytesWritten: 131_072, total: 300_000))
+        let states = try await Self.drain(await store.install(id: "big"))
+        #expect(states.last == .installed)
+        let calls = await h.downloader.calls
+        #expect(calls.map(\.resumedFrom) == [0, 131_072])
+    }
+
+    @Test("checksum mismatch deletes the file and reports failure (ST-03v)")
+    func checksumMismatch() async throws {
+        let h = Harness()
+        await h.downloader.serve(Self.smallPayload, at: Self.big.downloadURL)   // wrong bytes for "big"
+        let store = h.store()
+        await #expect(throws: ModelStoreError.checksumMismatch) {
+            _ = try await Self.drain(await store.install(id: "big"))
+        }
+        #expect(await store.state(of: "big") == .notInstalled)
+        #expect(!FileManager.default.fileExists(atPath: h.dir.file("big.bin").path))
+        #expect(!FileManager.default.fileExists(atPath: h.dir.file("big.bin.partial").path))
+    }
+
+    @Test("the only installed speech model cannot be removed (ST-03d)")
+    func cannotRemoveOnly() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        _ = try await Self.drain(await store.install(id: "big"))
+        await #expect(throws: ModelStoreError.cannotRemoveOnlyModel("big")) { try await store.remove(id: "big") }
+    }
+
+    @Test("removing the default switches the default to another installed model")
+    func removeSwitchesDefault() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        _ = try await Self.drain(await store.install(id: "big"))
+        _ = try await Self.drain(await store.install(id: "small"))
+        #expect(await store.defaultModel(role: .speech)?.id == "big")
+        try await store.remove(id: "big")
+        #expect(await store.state(of: "big") == .notInstalled)
+        #expect(await store.defaultModel(role: .speech)?.id == "small")
+        #expect(h.settings.string(forKey: "models.default.speech") == "small")
+    }
+
+    @Test("a file deleted behind the store's back reads as not installed, with no re-download")
+    func manualDeletion() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        _ = try await Self.drain(await store.install(id: "big"))
+        try FileManager.default.removeItem(at: h.dir.file("big.bin"))
+        #expect(await store.state(of: "big") == .notInstalled)
+        #expect(await store.installedModels(role: .speech).isEmpty)
+        #expect(await h.downloader.calls.count == 1)
+    }
+
+    @Test("setDefault persists and rejects models that are not installed")
+    func setDefault() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        await #expect(throws: ModelStoreError.notInstalled("small")) { try await store.setDefault(id: "small") }
+        _ = try await Self.drain(await store.install(id: "small"))
+        try await store.setDefault(id: "small")
+        #expect(h.settings.string(forKey: "models.default.speech") == "small")
+    }
+}
