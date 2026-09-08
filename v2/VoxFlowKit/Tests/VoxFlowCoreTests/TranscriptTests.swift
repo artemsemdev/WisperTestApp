@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import VoxFlowCore
 
@@ -32,5 +33,13 @@ struct TranscriptTests {
         ])
         #expect(transcript.wordCount == 6)
         #expect(transcript.plainText == "Welcome back. Today we're  picking up")
+    }
+
+    @Test("confidence is optional and round-trips through Codable")
+    func confidenceCodable() throws {
+        let segment = TranscriptSegment(start: 0, end: 1, text: "hi", confidence: 0.87)!
+        let data = try JSONEncoder().encode(segment)
+        #expect(try JSONDecoder().decode(TranscriptSegment.self, from: data) == segment)
+        #expect(TranscriptSegment(start: 0, end: 1, text: "x")!.confidence == nil)
     }
 }

@@ -12,7 +12,9 @@ public actor WhisperCppEngine: SpeechEngine {
 
     /// Owns the `whisper_context` pointer and frees it when the engine goes away.
     final class ContextBox: @unchecked Sendable {
-        // Safe: the pointer is only dereferenced on `WhisperCppEngine.queue`.
+        // Safe: the pointer is only dereferenced on WhisperCppEngine.queue while runs are in flight;
+        // deinit runs when the last reference (held by the engine or an in-flight run) goes away,
+        // so nothing can be using it.
         let pointer: OpaquePointer
         init(_ pointer: OpaquePointer) { self.pointer = pointer }
         deinit { whisper_free(pointer) }
@@ -87,11 +89,9 @@ public actor WhisperCppEngine: SpeechEngine {
         guard let context else { throw SpeechEngineError.modelNotLoaded }
         let mapped = WhisperParameters(options: options, availableCores: ProcessInfo.processInfo.activeProcessorCount)
         let samples = audio.samples
-        // `whisper_full` runs synchronously on `queue`, off the Swift Concurrency task tree, so the
-        // abort callback cannot read `Task.isCancelled` directly. `withTaskCancellationHandler` ties
-        // `onCancel` to *this* method's task (there is no Task boundary between it and the caller in
-        // `transcribe`), firing immediately on cancellation; it flips a lock-guarded flag the callback
-        // can safely poll from the queue.
+        // onCancel is tied to the producer Task created in transcribe(); the consumer's cancellation
+        // reaches it through continuation.onTermination → task.cancel(). See #125 for the stream-side
+        // caveat.
         let cancelFlag = CancelFlag()
         let runState = RunState(continuation: continuation, isCancelled: { cancelFlag.isSet })
 
@@ -127,7 +127,11 @@ public actor WhisperCppEngine: SpeechEngine {
                         let start = Double(whisper_full_get_segment_t0(ctx, i)) / 100
                         let end = Double(whisper_full_get_segment_t1(ctx, i)) / 100
                         let text = String(cString: whisper_full_get_segment_text(ctx, i))
-                        if let segment = TranscriptSegment(start: start, end: end, text: text) {
+                        let tokenCount = whisper_full_n_tokens(ctx, i)
+                        let confidence: Double? = tokenCount > 0
+                            ? (0..<tokenCount).reduce(0.0) { $0 + Double(whisper_full_get_token_p(ctx, i, $1)) } / Double(tokenCount)
+                            : nil
+                        if let segment = TranscriptSegment(start: start, end: end, text: text, confidence: confidence) {
                             state.continuation.yield(.segment(segment))
                         }
                         state.emitted += 1

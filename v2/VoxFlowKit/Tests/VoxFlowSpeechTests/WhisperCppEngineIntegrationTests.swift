@@ -42,6 +42,7 @@ struct WhisperCppEngineIntegrationTests {
         #expect(text.contains("attention"))
         #expect(segments.map(\.start) == segments.map(\.start).sorted())
         #expect(segments.last!.end <= audio.duration + 0.5)
+        #expect(segments.allSatisfy { ($0.confidence ?? -1) >= 0 && ($0.confidence ?? 2) <= 1 })
     }
 
     @Test("cancelling the consumer aborts the run")

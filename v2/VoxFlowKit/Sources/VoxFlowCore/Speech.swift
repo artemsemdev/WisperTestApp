@@ -57,7 +57,11 @@ public enum SpeechEngineError: Error, Equatable, Sendable {
 public protocol SpeechEngine: Sendable {
     func load(modelAt url: URL) async throws
     func detectLanguage(in audio: AudioSamples) async throws -> LanguageDetection
-    /// Streams final segments and progress; finishes when the audio is consumed. Cancel the
-    /// consuming task to abort; the stream then throws `SpeechEngineError.cancelled`.
+    /// Streams final segments and progress; finishes when the audio is consumed.
+    /// One run at a time per engine: concurrent calls queue behind each other.
+    /// Cancellation: if the consuming task is already cancelled when iteration starts, the stream
+    /// throws `SpeechEngineError.cancelled`. If it is cancelled mid-run, the engine aborts promptly
+    /// but `AsyncThrowingStream` may end the iteration without an error — check `Task.isCancelled`
+    /// after the loop. Tracked in issue #125.
     func transcribe(_ audio: AudioSamples, options: TranscriptionOptions) -> AsyncThrowingStream<SegmentEvent, Error>
 }

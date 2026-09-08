@@ -5,13 +5,16 @@ public struct TranscriptSegment: Sendable, Equatable, Codable {
     public var start: TimeInterval
     public var end: TimeInterval
     public var text: String
+    /// Average token probability 0…1 when the engine reports it.
+    public var confidence: Double?
 
     /// Returns nil when `end` precedes `start`.
-    public init?(start: TimeInterval, end: TimeInterval, text: String) {
+    public init?(start: TimeInterval, end: TimeInterval, text: String, confidence: Double? = nil) {
         guard end >= start else { return nil }
         self.start = start
         self.end = end
         self.text = text
+        self.confidence = confidence
     }
 
     public var duration: TimeInterval { end - start }
