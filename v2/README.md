@@ -16,6 +16,7 @@ code at the repository root is frozen and will be removed at promotion.
 | `VoxFlowTests/` | App-layer tests |
 | `VoxFlowKit/` | SwiftPM package with all logic: Core, Audio, Speech, Models, Files, Dictation, Storage, Styling, MCP |
 | `design/` | The Claude Design canvas that is the product spec |
+| `spikes/` | Throwaway benchmarks (not built in CI) |
 | `docs/adr/` | Architecture decision records for v2 |
 | `docs/superpowers/` | Design specs and implementation plans |
 
@@ -34,6 +35,8 @@ Package-only tests, no Xcode project needed:
 ```bash
 cd v2/VoxFlowKit && swift test
 ```
+
+Integration tests that need a Whisper model look in `~/Library/Application Support/VoxFlow/Models` and skip with a reason when none is installed.
 
 Open `VoxFlow.xcodeproj` in Xcode to run the app (scheme `VoxFlow`).
 
