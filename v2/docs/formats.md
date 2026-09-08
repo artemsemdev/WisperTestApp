@@ -1,6 +1,6 @@
 # VoxFlow v2 transcript formats
 
-All transcript output formats guarantee determinism: given the same audio and model, you get the same file bytes every time. Line endings are Unix (`\n`), with a single trailing newline. JSON objects have keys sorted alphabetically. Dates use ISO 8601 format in UTC.
+All transcript output formats guarantee determinism: given the same audio and model, you get the same file bytes every time. Line endings are Unix (`\n`), with a single trailing newline. JSON objects have keys sorted alphabetically. Dates use ISO 8601 format in UTC. Segment text is always trimmed of leading/trailing whitespace. The timestamps toggle applies only to TXT and Markdown — SRT and VTT always carry per-cue timing (it's inherent to the format) and JSON always includes each segment's `start`/`end`, regardless of the toggle.
 
 ## Text (TXT)
 
@@ -34,6 +34,8 @@ Welcome back. Today we're picking up where we left off.
 Last week we covered why fixed-length context vectors become a bottleneck.
 ```
 
+A blank line inside a segment's text would otherwise end its cue early, so SRT flattens any run of newlines in the segment text to a single space.
+
 ## WebVTT (VTT)
 
 Web video text track format, used by video players and browsers.
@@ -47,6 +49,8 @@ Welcome back. Today we're picking up where we left off.
 00:00:04.120 --> 00:00:09.860
 Last week we covered why fixed-length context vectors become a bottleneck.
 ```
+
+Like SRT, VTT flattens any run of newlines in a segment's text to a single space.
 
 ## JSON
 
@@ -97,6 +101,8 @@ Structured format including metadata and segment details.
 | `segments[].confidence` | number | (optional) Confidence score (0–1), present only when available |
 
 `generator` carries the app version (`VoxFlow <version>`), so it changes with releases; every other byte of the example is stable.
+
+A non-finite number (`NaN`, `+Infinity`, `-Infinity`) — not expected in practice, but not excluded by the segment/confidence types either — encodes as the string `"nan"`, `"inf"` or `"-inf"` rather than breaking the export; standard JSON has no literal for these values.
 
 ## Markdown (MD)
 

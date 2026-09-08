@@ -15,7 +15,7 @@ code at the repository root is frozen and will be removed at promotion.
 | `VoxFlow/` | SwiftUI app shell: App, MainWindow, MenuBar, FlowBar, Onboarding, Settings, Design (per-screen folders appear with their phase) |
 | `VoxFlowTests/` | App-layer tests |
 | `VoxFlowKit/` | SwiftPM package with all logic: Core, Audio, Speech, Models, Dictation, Storage, Styling, MCP |
-| `VoxFlowKit/VoxFlowFiles/` | File queue, transcript writers (TXT/SRT/VTT/JSON/MD), export, ETA (see [`docs/formats.md`](docs/formats.md)) |
+| `VoxFlowKit/Sources/VoxFlowFiles/` | File queue, transcript writers (TXT/SRT/VTT/JSON/MD), export, ETA (see [`docs/formats.md`](docs/formats.md)) |
 | `design/` | The Claude Design canvas that is the product spec |
 | `spikes/` | Throwaway benchmarks (not built in CI) |
 | `docs/adr/` | Architecture decision records for v2 |
