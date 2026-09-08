@@ -15,11 +15,46 @@ public actor FakeModelDownloader: ModelDownloading {
     public private(set) var calls: [Call] = []
     public var chunkSize = 64 * 1024
 
+    /// After this many new bytes the transfer suspends until `release()` or task cancellation.
+    private var blockAfterBytes: Int64?
+    private var gate: CheckedContinuation<Void, any Error>?
+    private var blockedWaiters: [CheckedContinuation<Void, Never>] = []
+
     public init() {}
 
     public func serve(_ data: Data, at url: URL) { payloads[url] = data }
     public func setFailAfterBytes(_ bytes: Int64?) { failAfterBytes = bytes }
     public func setChunkSize(_ n: Int) { chunkSize = n }
+    public func setBlockAfterBytes(_ bytes: Int64?) { blockAfterBytes = bytes }
+
+    /// Suspends until the transfer is parked at the gate (returns at once if it already is).
+    public func waitUntilBlocked() async {
+        if gate != nil { return }
+        await withCheckedContinuation { blockedWaiters.append($0) }
+    }
+
+    /// Lets a parked transfer continue.
+    public func release() {
+        gate?.resume()
+        gate = nil
+    }
+
+    private func park() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                gate = continuation
+                for waiter in blockedWaiters { waiter.resume() }
+                blockedWaiters.removeAll()
+            }
+        } onCancel: {
+            Task { await self.cancelGate() }
+        }
+    }
+
+    private func cancelGate() {
+        gate?.resume(throwing: CancellationError())
+        gate = nil
+    }
 
     public func download(_ url: URL, to destination: URL, progress: @Sendable @escaping (Int64, Int64) -> Void) async throws {
         guard let data = payloads[url] else { throw DownloadError.http(status: 404) }
@@ -36,12 +71,6 @@ public actor FakeModelDownloader: ModelDownloading {
         let total = Int64(data.count)
         var offset = Int(existing)
         while offset < data.count {
-            // A real, timed suspension point between chunks: with unbounded stream buffering and no
-            // per-chunk delay, the whole transfer can complete before a consumer's cancellation is
-            // even requested, so a plain `Task.yield()` isn't enough to make cancellation land
-            // mid-transfer. The delay is negligible at production chunk sizes (a handful of chunks)
-            // and is what cancelKeepsPartial relies on with its small chunkSize.
-            try await Task.sleep(for: .microseconds(200))
             try Task.checkCancellation()
             let end = min(offset + chunkSize, data.count)
             let chunk = data[offset..<end]
@@ -53,6 +82,10 @@ public actor FakeModelDownloader: ModelDownloading {
             if let limit = failAfterBytes, newBytes >= limit {
                 failAfterBytes = nil
                 throw DownloadError.offline(bytesWritten: written)
+            }
+            if let limit = blockAfterBytes, newBytes >= limit {
+                blockAfterBytes = nil
+                try await park()
             }
         }
     }

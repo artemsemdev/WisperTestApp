@@ -204,28 +204,21 @@ struct ModelStoreTests {
     func cancelKeepsPartial() async throws {
         let h = Harness()
         await h.serveAll()
-        await h.downloader.setChunkSize(512)             // many chunks → cancellation lands mid-transfer
+        await h.downloader.setBlockAfterBytes(131_072)        // park after two 64 KiB chunks
         let store = h.store()
         let task = Task { try await Self.drain(await store.install(id: "big")) }
-        try await Task.sleep(for: .milliseconds(50))
+        await h.downloader.waitUntilBlocked()
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        // The consumer sees its own cancellation (and `drain` throws) as soon as the stream notices
-        // the task is cancelled — that can run ahead of `performInstall`'s own cancellation handling
-        // on the actor, which clears `inProgress` in a `defer` once *it* unwinds. Poll briefly rather
-        // than assume that cleanup has already landed by the time we ask.
+
+        // The producer's cleanup (`defer { inProgress[id] = nil }`) runs on its own task; yield until it has.
         var state = await store.state(of: "big")
-        var attempts = 0
-        while case .downloading = state, attempts < 100 {
-            try await Task.sleep(for: .milliseconds(5))
+        for _ in 0..<1_000 where state != .paused(bytesWritten: 131_072, total: 300_000) {
+            await Task.yield()
             state = await store.state(of: "big")
-            attempts += 1
         }
-        if case .paused(let written, let total) = state {
-            #expect(written > 0 && written < total)
-        } else {
-            Issue.record("expected .paused after cancellation, got \(state)")
-        }
+        #expect(state == .paused(bytesWritten: 131_072, total: 300_000))
+        #expect(try FileManager.default.attributesOfItem(atPath: h.dir.file("big.bin.partial").path)[.size] as? Int64 == 131_072)
     }
 
     @Test("a catalog entry without a checksum cannot be installed (real Qwen row)")
