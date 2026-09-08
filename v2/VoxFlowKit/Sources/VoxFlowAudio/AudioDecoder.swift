@@ -18,8 +18,8 @@ public struct AudioDecoder: Sendable {
         "mp3", "wav", "m4a", "aac", "flac", "aiff", "aif", "caf", "mp4", "mov", "m4v",
     ]
 
-    /// Input frames read from the file per input-block invocation; bounds memory for
-    /// multi-hour files.
+    /// Input frames converted per iteration. Bounds the *conversion* buffers; the decoded output still
+    /// holds the whole file (≈ 690 MB for 3 h) — chunking long files is a phase-2 decision.
     private static let chunkFrames: AVAudioFrameCount = 65_536
 
     public init() {}
@@ -88,6 +88,7 @@ public struct AudioDecoder: Sendable {
                 throw AudioDecodingError.decodeFailed(error.localizedDescription)
             }
             if let conversionError { throw AudioDecodingError.decodeFailed(conversionError.localizedDescription) }
+            if status == .error { throw AudioDecodingError.decodeFailed("conversion failed") }
 
             appendDownmixed(outputBuffer, channels: Int(sourceChannels), to: &output)
 
