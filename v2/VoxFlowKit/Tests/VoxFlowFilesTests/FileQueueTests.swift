@@ -49,6 +49,23 @@ struct FileQueueTests {
         #expect(items[0].duplicates == 2)
     }
 
+    @Test("re-dropping a failed or cancelled file bumps the badge and re-queues it; done files get a new row")
+    func redropAfterFailure() async throws {
+        let transcriber = FakeFileTranscriber()
+        await transcriber.script(a, .failure(.decodeFailed("corrupt")))
+        await transcriber.script(b, .document(Self.doc(b)))
+        let queue = makeQueue(transcriber)
+        await queue.add([a, b])
+        async let finished = Self.awaitFinished(queue, count: 2)
+        await queue.start()
+        _ = await finished
+        await queue.add([a, b])
+        let items = await queue.items
+        #expect(items.count == 3)
+        #expect(items[0].url == a && items[0].status == .queued && items[0].duplicates == 2)
+        #expect(items[2].url == b && items[2].status == .queued && items[2].duplicates == 1)   // done → new row
+    }
+
     @Test("processes sequentially, skips failures and keeps going, emits finished events")
     func sequentialSkipFailed() async throws {
         let transcriber = FakeFileTranscriber()

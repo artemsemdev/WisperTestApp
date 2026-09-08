@@ -22,6 +22,13 @@ public struct QueueItem: Identifiable, Sendable, Equatable {
         default: false
         }
     }
+
+    /// `true` only for a completed transcription — the one status `add` treats as "this file is
+    /// done with, drop it again as a new row" rather than something to collapse into.
+    var isDone: Bool {
+        if case .done = status { return true }
+        return false
+    }
 }
 
 public enum FileQueueEvent: Sendable, Equatable {
@@ -67,13 +74,23 @@ public actor FileQueue {
         return nil
     }
 
+    /// Adds files, standardizing each path first. A URL that matches an existing row which isn't
+    /// `.done` collapses into that row instead of creating a new one: `duplicates` is bumped, and
+    /// if the row was `.failed`/`.cancelled` it is also re-queued (status → `.queued`) — the
+    /// user's natural "drop it again to try again". A `.queued`/`.running` row is left running;
+    /// only its badge changes. A URL matching only a `.done` row gets a fresh row instead, since
+    /// that file's own transcript already exists and re-dropping means starting over on a new one.
     @discardableResult
     public func add(_ urls: [URL]) async -> [QueueItem] {
         var added: [QueueItem] = []
         for raw in urls {
             let url = raw.standardizedFileURL
-            if let index = items.firstIndex(where: { $0.url == url && !$0.isFinished }) {
+            if let index = items.firstIndex(where: { $0.url == url && !$0.isDone }) {
                 items[index].duplicates += 1
+                switch items[index].status {
+                case .failed, .cancelled: items[index].status = .queued
+                default: break
+                }
                 publish(.changed(items[index]))
                 added.append(items[index])
                 continue
