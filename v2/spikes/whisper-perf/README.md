@@ -12,3 +12,5 @@ Results 2026-09-08, M1 Max 64 GB, whisper.cpp v1.9.2, Metal, 31.7 s synthetic sp
 | base | 0.12 s | 0.34 s | 0.011 (94×) | 307 MB |
 
 First run after install: ~12 s one-time Metal shader compilation. Thread count is irrelevant (GPU-bound).
+
+Language auto-detect (whisper_lang_auto_detect): turbo 0.75 s · small 0.29 s · base 0.45 s.

@@ -28,8 +28,8 @@ playground.xcworkspace
 .build/
 .swiftpm/
 spikes/**/.build/
-# VoxFlowKit/Package.resolved IS tracked (reproducible builds). Only the copy Xcode
-# writes inside the generated project is ignored (and that directory is ignored anyway).
+# No Package.resolved is generated: the package has no source-control dependencies; the
+# XCFramework is pinned by its checksum in Package.swift.
 
 # ── Test output ─────────────────────────────────────────────────────────────
 *.xcresult

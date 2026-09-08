@@ -30,3 +30,4 @@ See `v2/spikes/whisper-perf/README.md`. Turbo: load 0.72 s, RTF 0.063, 1.8 GB RS
 - The XCFramework ships `parakeet.h`; Parakeet may be reachable later without a new engine.
 - Language detection costs ~0.75 s with turbo; the UI must not call it per keystroke.
 - The engine holds ~1.8 GB while loaded; unloading on memory pressure is a phase-3 concern.
+- Segment confidence is the mean token probability; the language detected by `whisper_full` itself is not surfaced yet (phase 2 decides).
