@@ -31,9 +31,15 @@ public struct QueueItem: Identifiable, Sendable, Equatable {
     }
 }
 
+/// `.cancelled` rows emit `.changed` only (no `.finished`); terminal rows (`.done`/`.failed`) emit
+/// `.changed` then `.finished`. `.idle` arrives once after the worker's last job, whether the queue
+/// ran dry or every row is done/failed/cancelled.
 public enum FileQueueEvent: Sendable, Equatable {
+    case added(QueueItem)
     case changed(QueueItem)
+    case removed(UUID)
     case finished(QueueItem)
+    case idle
 }
 
 /// The Files page's queue (design MW-06): sequential, failed rows skipped, duplicates collapsed.
@@ -48,7 +54,7 @@ public actor FileQueue {
     private var worker: Task<Void, Never>?
     private var currentJob: Task<Void, Never>?
     private var currentID: UUID?
-    private var continuation: AsyncStream<FileQueueEvent>.Continuation?
+    private var subscribers: [UUID: AsyncStream<FileQueueEvent>.Continuation] = [:]
     private var lastPublishedProgress: [UUID: Double] = [:]
 
     public init(transcriber: any FileTranscribing, durations: any AudioDurationProviding,
@@ -59,12 +65,20 @@ public actor FileQueue {
         self.options = options
     }
 
-    /// Single-consumer event stream; calling it again replaces the previous subscriber.
-    public var events: AsyncStream<FileQueueEvent> {
+    /// Multi-subscriber event stream: each call registers its own continuation, live until the
+    /// caller stops iterating (or the queue is deallocated), independent of every other subscriber.
+    public func subscribe() -> AsyncStream<FileQueueEvent> {
+        let id = UUID()
         let (stream, continuation) = AsyncStream<FileQueueEvent>.makeStream(bufferingPolicy: .unbounded)
-        self.continuation?.finish()
-        self.continuation = continuation
+        subscribers[id] = continuation
+        continuation.onTermination = { _ in
+            Task { await self.unsubscribe(id) }
+        }
         return stream
+    }
+
+    private func unsubscribe(_ id: UUID) {
+        subscribers.removeValue(forKey: id)
     }
 
     public var totalDuration: TimeInterval { items.compactMap(\.duration).reduce(0, +) }
@@ -80,6 +94,11 @@ public actor FileQueue {
     /// user's natural "drop it again to try again". A `.queued`/`.running` row is left running;
     /// only its badge changes. A URL matching only a `.done` row gets a fresh row instead, since
     /// that file's own transcript already exists and re-dropping means starting over on a new one.
+    ///
+    /// For a brand-new URL the row is appended and `.added` published *before* the duration lookup
+    /// is awaited — the dedupe check and the append happen with no suspension between them, so a
+    /// second `add` racing on the same URL always sees the row already there instead of also
+    /// passing the dedupe check and creating a second one.
     @discardableResult
     public func add(_ urls: [URL]) async -> [QueueItem] {
         var added: [QueueItem] = []
@@ -96,15 +115,16 @@ public actor FileQueue {
                 continue
             }
             let ext = url.pathExtension.lowercased()
-            var item = QueueItem(id: UUID(), url: url, duration: nil, duplicates: 1,
+            let item = QueueItem(id: UUID(), url: url, duration: nil, duplicates: 1,
                                  status: supportedExtensions.contains(ext) ? .queued : .failed(.unsupportedType(ext)))
-            if case .queued = item.status {
-                item.duration = try? await durations.duration(of: url)
-            }
             items.append(item)
-            publish(.changed(item))
+            publish(.added(item))
             if case .failed = item.status { publish(.finished(item)) }
-            added.append(item)
+            if case .queued = item.status {
+                let duration = try? await durations.duration(of: url)
+                update(item.id) { $0.duration = duration }
+            }
+            added.append(items.first(where: { $0.id == item.id }) ?? item)
         }
         return added
     }
@@ -112,6 +132,7 @@ public actor FileQueue {
     public func remove(id: UUID) {
         if currentID == id { currentJob?.cancel() }
         items.removeAll { $0.id == id }
+        publish(.removed(id))
     }
 
     public func cancel(id: UUID) {
@@ -121,6 +142,7 @@ public actor FileQueue {
             items[index].status = .cancelled
             publish(.changed(items[index]))
         case .running:
+            guard currentID == id else { return }
             currentJob?.cancel()      // the job's catch marks the row cancelled
         default:
             break
@@ -144,6 +166,13 @@ public actor FileQueue {
         worker = Task { await self.runLoop() }
     }
 
+    /// Waits for the current worker (if any) to finish its run — including the `.idle` event it
+    /// publishes at the end. Captures the task before awaiting, so it is fine that `runLoop` nils
+    /// the field before this returns.
+    public func waitUntilIdle() async {
+        if let worker { await worker.value }
+    }
+
     // MARK: Worker
 
     private func runLoop() async {
@@ -160,6 +189,7 @@ public actor FileQueue {
         }
         isRunning = false
         worker = nil
+        publish(.idle)
     }
 
     /// Runs one job and applies its terminal status. Progress reports arrive on the transcriber's
@@ -225,6 +255,8 @@ public actor FileQueue {
     }
 
     private func publish(_ event: FileQueueEvent) {
-        continuation?.yield(event)
+        for continuation in subscribers.values {
+            continuation.yield(event)
+        }
     }
 }

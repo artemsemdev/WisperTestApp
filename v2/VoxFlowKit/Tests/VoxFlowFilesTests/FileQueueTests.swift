@@ -4,6 +4,42 @@ import VoxFlowCore
 import VoxFlowTestSupport
 @testable import VoxFlowFiles
 
+/// `AudioDurationProviding` that parks every call until `releaseAll()`, letting a test observe (and
+/// wait for) how many concurrent callers are currently blocked in `duration(of:)` — same
+/// continuation-park pattern as `FakeFileTranscriber.park`.
+actor GatedDuration: AudioDurationProviding {
+    private var pending: [CheckedContinuation<TimeInterval, any Error>] = []
+    private var callerCount = 0
+    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    var totalCalls: Int { callerCount }
+
+    func duration(of url: URL) async throws -> TimeInterval {
+        callerCount += 1
+        notifyWaiters()
+        return try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+
+    /// Resolves once at least `count` calls to `duration(of:)` are currently parked.
+    func waitForCallers(_ count: Int) async {
+        if callerCount >= count { return }
+        await withCheckedContinuation { waiters.append((count, $0)) }
+    }
+
+    func releaseAll() {
+        let toResume = pending
+        pending = []
+        for continuation in toResume { continuation.resume(returning: 0) }
+    }
+
+    private func notifyWaiters() {
+        waiters.removeAll { waiter in
+            guard callerCount >= waiter.count else { return false }
+            waiter.continuation.resume()
+            return true
+        }
+    }
+}
+
 @Suite("FileQueue")
 struct FileQueueTests {
     static func doc(_ url: URL) -> TranscriptDocument {
@@ -22,7 +58,7 @@ struct FileQueueTests {
     /// Collects events until `count` `finished` events arrived (bounded by the test's timeout).
     static func awaitFinished(_ queue: FileQueue, count: Int) async -> [QueueItem] {
         var finished: [QueueItem] = []
-        for await event in await queue.events {
+        for await event in await queue.subscribe() {
             if case .finished(let item) = event { finished.append(item) }
             if finished.count == count { break }
         }
@@ -49,6 +85,26 @@ struct FileQueueTests {
         #expect(items[0].duplicates == 2)
     }
 
+    @Test("two overlapping adds of the same file produce one row with a 2× badge")
+    func concurrentAddSameFile() async {
+        // The fix's whole point is that the dedupe check and the row's append happen with no
+        // suspension between them, so whichever of these two `add` calls runs first reserves the
+        // row *before* either one could await a duration lookup — the other sees that row already
+        // there and never calls `duration(of:)` itself. Exactly one caller ever reaches the gate;
+        // that is the fixed behavior, not a fluke of this test, so we only wait for one.
+        let gate = GatedDuration()
+        let queue = FileQueue(transcriber: FakeFileTranscriber(), durations: gate,
+                              supportedExtensions: ["m4a"], options: { TranscriptionOptions() })
+        async let first: [QueueItem] = queue.add([a])
+        async let second: [QueueItem] = queue.add([a])
+        await gate.waitForCallers(1)
+        await gate.releaseAll()
+        _ = await (first, second)
+        let items = await queue.items
+        #expect(items.count == 1 && items[0].duplicates == 2)
+        #expect(await gate.totalCalls == 1)
+    }
+
     @Test("re-dropping a failed or cancelled file bumps the badge and re-queues it; done files get a new row")
     func redropAfterFailure() async throws {
         let transcriber = FakeFileTranscriber()
@@ -59,6 +115,7 @@ struct FileQueueTests {
         async let finished = Self.awaitFinished(queue, count: 2)
         await queue.start()
         _ = await finished
+        await queue.waitUntilIdle()
         await queue.add([a, b])
         let items = await queue.items
         #expect(items.count == 3)
@@ -90,12 +147,13 @@ struct FileQueueTests {
         let queue = makeQueue(transcriber)
         let item = await queue.add([a])[0]
         var seen: [Double] = []
-        // Subscribe before `start()`: `events` registers the continuation as a side effect of
+        // Subscribe before `start()`: `subscribe()` registers the continuation as a side effect of
         // this actor call, and that registration must happen before `start()` publishes the
-        // first event, or it is dropped (single-subscriber stream, no pre-subscription buffer).
-        // Calling `await queue.events` *inside* the `Task {}` closure races `start()` below —
+        // first event, or it is missed by this particular subscriber (each subscriber only sees
+        // events published after it registered — there is no pre-subscription buffer).
+        // Calling `await queue.subscribe()` *inside* the `Task {}` closure races `start()` below —
         // a plain `Task` isn't guaranteed to run before the next line the way `async let` is.
-        let stream = await queue.events
+        let stream = await queue.subscribe()
         let collector = Task {
             for await event in stream {
                 if case .changed(let changed) = event, case .running(let p) = changed.status { seen.append(p) }
@@ -143,8 +201,7 @@ struct FileQueueTests {
         await transcriber.waitUntilHeld(a)
         await queue.remove(id: item.id)
         #expect(await queue.items.isEmpty)
-        // Give the worker a chance to observe cancellation and go idle.
-        for _ in 0..<1_000 where await queue.isRunning { await Task.yield() }
+        await queue.waitUntilIdle()
         #expect(await queue.isRunning == false)
     }
 
@@ -161,5 +218,27 @@ struct FileQueueTests {
         await transcriber.release(a)
         _ = await Self.awaitFinished(queue, count: 1)
         #expect(await transcriber.calls == [a])
+    }
+
+    @Test("idle event and waitUntilIdle after the last job")
+    func idleAfterLastJob() async throws {
+        let transcriber = FakeFileTranscriber()
+        await transcriber.script(a, .document(Self.doc(a)))
+        let queue = makeQueue(transcriber)
+        await queue.add([a])
+        let stream = await queue.subscribe()
+        let collector = Task { () -> Bool in
+            var sawFinished = false
+            for await event in stream {
+                if case .finished = event { sawFinished = true }
+                if case .idle = event { return sawFinished }
+            }
+            return false
+        }
+        await queue.start()
+        let idleArrivedAfterFinished = await collector.value
+        #expect(idleArrivedAfterFinished)
+        await queue.waitUntilIdle()
+        #expect(await queue.isRunning == false)
     }
 }
