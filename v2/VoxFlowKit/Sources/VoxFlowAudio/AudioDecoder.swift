@@ -3,14 +3,6 @@ import Foundation
 import Synchronization
 import VoxFlowCore
 
-public enum AudioDecodingError: Error, Equatable, Sendable {
-    case fileNotFound(URL)
-    /// The extension is not one VoxFlow accepts (design MW-06x: "Not an audio or video file").
-    case unsupportedType(String)
-    /// AVFoundation could not open or read the file ("Couldn't decode this file").
-    case decodeFailed(String)
-}
-
 /// Decodes any AVFoundation-readable audio/video file to `AudioSamples` (16 kHz mono Float32).
 public struct AudioDecoder: AudioDecoding {
     /// Extensions accepted on drop (design MW-06 / MW-06x), lowercase.

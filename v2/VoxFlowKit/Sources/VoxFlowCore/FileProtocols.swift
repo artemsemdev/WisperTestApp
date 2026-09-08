@@ -1,5 +1,13 @@
 import Foundation
 
+public enum AudioDecodingError: Error, Equatable, Sendable {
+    case fileNotFound(URL)
+    /// The extension is not one VoxFlow accepts (design MW-06x: "Not an audio or video file").
+    case unsupportedType(String)
+    /// AVFoundation could not open or read the file ("Couldn't decode this file").
+    case decodeFailed(String)
+}
+
 /// Decodes a file to engine-ready samples (implemented by `AudioDecoder`).
 public protocol AudioDecoding: Sendable {
     func decode(_ url: URL) throws -> AudioSamples

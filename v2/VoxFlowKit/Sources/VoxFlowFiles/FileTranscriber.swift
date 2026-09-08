@@ -24,8 +24,12 @@ public struct FileTranscriber: FileTranscribing {
         let audio: AudioSamples
         do {
             audio = try decoder.decode(url)
-        } catch {
-            throw Self.mapDecodingError(error)
+        } catch let error as AudioDecodingError {
+            switch error {
+            case .unsupportedType(let ext): throw FileTranscriptionError.unsupportedType(ext)
+            case .fileNotFound(let missing): throw FileTranscriptionError.decodeFailed("file not found: \(missing.lastPathComponent)")
+            case .decodeFailed(let reason): throw FileTranscriptionError.decodeFailed(reason)
+            }
         }
         progress(Self.decodeShare)
 
@@ -57,25 +61,5 @@ public struct FileTranscriber: FileTranscribing {
         } catch {
             throw FileTranscriptionError.engineFailed(String(describing: error))
         }
-    }
-
-    /// `VoxFlowFiles` depends on Core only, so a concrete `AudioDecoding` error (e.g. `VoxFlowAudio`'s
-    /// `AudioDecodingError`) can't be named or `catch`-matched here. Its cases are structurally
-    /// well-known (`unsupportedType(String)`, `fileNotFound(URL)`, `decodeFailed(String)`), so a
-    /// reflection-based match reproduces the same mapping without a module dependency.
-    private static func mapDecodingError(_ error: Error) -> FileTranscriptionError {
-        if let child = Mirror(reflecting: error).children.first, let label = child.label {
-            switch (label, child.value) {
-            case ("unsupportedType", let ext as String):
-                return .unsupportedType(ext)
-            case ("decodeFailed", let reason as String):
-                return .decodeFailed(reason)
-            case ("fileNotFound", let missing as URL):
-                return .decodeFailed("file not found: \(missing.lastPathComponent)")
-            default:
-                break
-            }
-        }
-        return .decodeFailed(String(describing: error))
     }
 }
