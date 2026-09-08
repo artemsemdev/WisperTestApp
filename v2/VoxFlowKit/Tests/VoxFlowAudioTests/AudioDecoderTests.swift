@@ -15,8 +15,12 @@ struct AudioDecoderTests {
         try FixtureAudio.writeSine(to: url, seconds: 2, sampleRate: 44_100, channels: 2)
         let audio = try decoder.decode(url)
         #expect(abs(audio.duration - 2) < 0.05)
-        #expect(audio.samples.max()! > 0.2)   // signal survived the conversion
-        #expect(audio.samples.min()! < -0.2)
+        // Fixture puts the 0.5-amplitude sine on channel 0 only, silence elsewhere; a correct
+        // stereo-to-mono downmix averages them, so the decoded peak should land around 0.25
+        // (0.5 + 0) / 2 — proving the decoder actually downmixes rather than just picking one
+        // already-identical channel.
+        #expect((0.2...0.3).contains(audio.samples.max()!))
+        #expect((-0.3...(-0.2)).contains(audio.samples.min()!))
     }
 
     @Test("AAC in m4a and mp4 containers decodes", arguments: ["m4a", "mp4"])
@@ -70,5 +74,13 @@ struct AudioDecoderTests {
         let url = dir.file("TONE.WAV")
         try FixtureAudio.writeSine(to: url, seconds: 0.5, sampleRate: 16_000, channels: 1)
         #expect(try decoder.decode(url).samples.count == 8_000)
+    }
+
+    @Test("an empty-but-valid file decodes to no samples, not an error")
+    func emptyFileDecodesToNoSamples() throws {
+        let dir = TemporaryDirectory()
+        let url = dir.file("silent.wav")
+        try FixtureAudio.writeSine(to: url, seconds: 0.001, sampleRate: 16_000, channels: 1)
+        #expect(try decoder.decode(url).samples.count < 100)
     }
 }

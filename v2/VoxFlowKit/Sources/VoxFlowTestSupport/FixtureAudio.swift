@@ -4,8 +4,10 @@ import Foundation
 /// Writes small synthetic audio files for decoder tests (no binaries in the repo except MP3,
 /// which AVFoundation cannot encode).
 public enum FixtureAudio {
-    /// A 440 Hz sine at amplitude 0.5, PCM 16-bit; container chosen by the URL's extension
-    /// (wav, aiff, caf).
+    /// A 440 Hz sine at amplitude 0.5 on channel 0, PCM 16-bit; every other channel is silent
+    /// (zeros), so a multi-channel fixture proves the decoder actually downmixes rather than
+    /// just passing one already-identical channel through. Container chosen by the URL's
+    /// extension (wav, aiff, caf).
     public static func writeSine(to url: URL, seconds: Double, sampleRate: Double, channels: UInt32) throws {
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
@@ -35,12 +37,11 @@ public enum FixtureAudio {
         let frames = AVAudioFrameCount(seconds * sampleRate)
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
         buffer.frameLength = frames
-        for channel in 0..<Int(channels) {
-            let data = buffer.floatChannelData![channel]
-            for i in 0..<Int(frames) {
-                data[i] = 0.5 * Float(sin(2 * Double.pi * 440 * Double(i) / sampleRate))
-            }
+        let data = buffer.floatChannelData![0]
+        for i in 0..<Int(frames) {
+            data[i] = 0.5 * Float(sin(2 * Double.pi * 440 * Double(i) / sampleRate))
         }
+        // Channels 1... are left at their zero-initialized default (silence).
         try file.write(from: buffer)
     }
 }
