@@ -56,7 +56,7 @@ Structured format including metadata and segment details.
 {
   "createdAt": "2025-09-08T00:00:00Z",
   "duration": 9.86,
-  "generator": "VoxFlow 2.0.0",
+  "generator": "VoxFlow 2.0.0-dev",
   "language": "en",
   "model": "whisper-large-v3-turbo",
   "processingTime": 0.62,
@@ -95,6 +95,8 @@ Structured format including metadata and segment details.
 | `segments[].end` | number | Segment end time in seconds |
 | `segments[].text` | string | Segment text content |
 | `segments[].confidence` | number | (optional) Confidence score (0–1), present only when available |
+
+`generator` carries the app version (`VoxFlow <version>`), so it changes with releases; every other byte of the example is stable.
 
 ## Markdown (MD)
 
