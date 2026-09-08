@@ -12,7 +12,7 @@ public enum AudioDecodingError: Error, Equatable, Sendable {
 }
 
 /// Decodes any AVFoundation-readable audio/video file to `AudioSamples` (16 kHz mono Float32).
-public struct AudioDecoder: Sendable {
+public struct AudioDecoder: AudioDecoding {
     /// Extensions accepted on drop (design MW-06 / MW-06x), lowercase.
     public static let supportedExtensions: Set<String> = [
         "mp3", "wav", "m4a", "aac", "flac", "aiff", "aif", "caf", "mp4", "mov", "m4v",

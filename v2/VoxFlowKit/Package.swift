@@ -19,8 +19,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "VoxFlowCore"),
-        .target(name: "VoxFlowTestSupport", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowAudio", dependencies: ["VoxFlowCore"]),
+        // Depends on VoxFlowAudio too: FakeAudioDuration throws VoxFlowAudio's AudioDecodingError.
+        .target(name: "VoxFlowTestSupport", dependencies: ["VoxFlowCore", "VoxFlowAudio"]),
         .target(name: "VoxFlowSpeech", dependencies: ["VoxFlowCore", "whisper"]),
         .target(name: "VoxFlowModels", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowFiles", dependencies: ["VoxFlowCore"]),
