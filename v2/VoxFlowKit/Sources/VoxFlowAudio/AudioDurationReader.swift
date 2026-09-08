@@ -8,12 +8,16 @@ public struct AudioDurationReader: AudioDurationProviding {
 
     public func duration(of url: URL) async throws -> TimeInterval {
         let ext = url.pathExtension.lowercased()
-        guard AudioDecoder.supportedExtensions.contains(ext) else { throw AudioDecodingError.unsupportedType(ext) }
+        guard SupportedAudio.extensions.contains(ext) else { throw AudioDecodingError.unsupportedType(ext) }
         guard FileManager.default.fileExists(atPath: url.path) else { throw AudioDecodingError.fileNotFound(url) }
         do {
             let asset = AVURLAsset(url: url)
             let duration = try await asset.load(.duration)
-            return CMTimeGetSeconds(duration)
+            let seconds = CMTimeGetSeconds(duration)
+            guard seconds.isFinite, seconds >= 0 else { throw AudioDecodingError.decodeFailed("indefinite duration") }
+            return seconds
+        } catch let error as AudioDecodingError {
+            throw error
         } catch {
             throw AudioDecodingError.decodeFailed(error.localizedDescription)
         }

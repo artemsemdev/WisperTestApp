@@ -15,6 +15,7 @@ public actor FakeFileTranscriber: FileTranscribing {
     public init() {}
 
     public func script(_ url: URL, _ script: Script) { scripts[url] = script }
+    public func setProgressSteps(_ steps: [Double]) { progressSteps = steps }
     /// Hold the next job for `url` after reporting `progressSteps`, until `release(url)` or cancellation.
     public func hold(_ url: URL) { holdURLs.insert(url) }
     public func waitUntilHeld(_ url: URL) async {
@@ -39,6 +40,7 @@ public actor FakeFileTranscriber: FileTranscribing {
     }
 
     private func park(_ url: URL) async throws {
+        try Task.checkCancellation()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 gates[url] = continuation

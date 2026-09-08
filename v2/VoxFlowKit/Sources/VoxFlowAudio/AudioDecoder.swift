@@ -5,10 +5,8 @@ import VoxFlowCore
 
 /// Decodes any AVFoundation-readable audio/video file to `AudioSamples` (16 kHz mono Float32).
 public struct AudioDecoder: AudioDecoding {
-    /// Extensions accepted on drop (design MW-06 / MW-06x), lowercase.
-    public static let supportedExtensions: Set<String> = [
-        "mp3", "wav", "m4a", "aac", "flac", "aiff", "aif", "caf", "mp4", "mov", "m4v",
-    ]
+    /// Delegates to `SupportedAudio`, the single source of truth; kept as a name for existing call sites.
+    public static var supportedExtensions: Set<String> { SupportedAudio.extensions }
 
     /// Input frames converted per iteration. Bounds the *conversion* buffers; the decoded output still
     /// holds the whole file (≈ 690 MB for 3 h) — chunking long files is a phase-2 decision.
