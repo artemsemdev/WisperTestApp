@@ -158,14 +158,17 @@ struct ModelStoreTests {
         let failures = outcomes.compactMap { if case .failure(let e) = $0 { e as? ModelStoreError } else { nil } }
         // Two legal interleavings under the actor's atomic `inProgress` guard:
         // (a) the two `install` calls truly overlap: the second observes `inProgress[id] != nil`
-        //     and throws `.alreadyInProgress` while the first proceeds to download and install; or
+        //     and throws `.alreadyInProgress` while the first proceeds to download and install
+        //     (one success, one failure); or
         // (b) the actor happens to fully serialize them (the first finishes installing before the
         //     second's `performInstall` body starts): the second then sees `.installed` at its own
-        //     top-of-body check and returns success without downloading again.
-        // Either way exactly one download happens and the model ends up installed.
-        #expect(successes.count == 1 && successes[0].last == .installed)
+        //     top-of-body check and returns success without downloading again (two successes, no
+        //     failure). Either way exactly one download happens and the model ends up installed.
+        #expect(successes.count + failures.count == 2)
+        #expect((1...2).contains(successes.count))
+        #expect(successes.allSatisfy { $0.last == .installed })
         #expect(failures.isEmpty || failures == [.alreadyInProgress("big")])
-        #expect(await h.downloader.calls.count == 1)
+        #expect(await h.downloader.calls.count == 1)      // never downloaded twice, in either interleaving
         #expect(await store.state(of: "big") == .installed)
     }
 
