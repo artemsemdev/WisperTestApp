@@ -19,6 +19,7 @@ public enum ModelStoreError: Error, Equatable, Sendable {
     case checksumMismatch
     case notInstalled(String)
     case cannotRemoveOnlyModel(String)
+    case alreadyInProgress(String)
 }
 
 /// Owns the model files on disk (design ST-03, ST-03v, ST-03d, SYS-DISK, ONB-04a).
@@ -101,6 +102,7 @@ public actor ModelStore {
     }
 
     private func performInstall(id: String, emit: @Sendable @escaping (ModelState) -> Void) async throws {
+        if inProgress[id] != nil { throw ModelStoreError.alreadyInProgress(id) }
         guard let model = descriptor(id) else { throw ModelStoreError.unknownModel(id) }
         guard !model.sha256.isEmpty else { throw ModelStoreError.checksumUnknown(id) }
         if state(of: id) == .installed { emit(.installed); return }

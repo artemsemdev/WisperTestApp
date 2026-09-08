@@ -46,10 +46,10 @@ public struct RangeResumingDownloader: ModelDownloading {
                 try Task.checkCancellation()
             }
         } catch is CancellationError {
-            try handle.write(contentsOf: buffer)
+            try? handle.write(contentsOf: buffer)
             throw DownloadError.cancelled
         } catch {
-            try handle.write(contentsOf: buffer)
+            try? handle.write(contentsOf: buffer)
             throw DownloadError.offline(bytesWritten: written + Int64(buffer.count))
         }
         try handle.write(contentsOf: buffer)

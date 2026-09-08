@@ -144,6 +144,31 @@ struct ModelStoreTests {
         #expect(await h.downloader.calls.count == 1)
     }
 
+    @Test("a second install of the same model while one is running is rejected, not doubled")
+    func concurrentInstallIsRejected() async throws {
+        let h = Harness()
+        await h.serveAll()
+        let store = h.store()
+        async let first = Self.drain(await store.install(id: "big"))
+        async let second = Self.drain(await store.install(id: "big"))
+        var outcomes: [Result<[ModelState], Error>] = []
+        do { outcomes.append(.success(try await first)) } catch { outcomes.append(.failure(error)) }
+        do { outcomes.append(.success(try await second)) } catch { outcomes.append(.failure(error)) }
+        let successes = outcomes.compactMap { try? $0.get() }
+        let failures = outcomes.compactMap { if case .failure(let e) = $0 { e as? ModelStoreError } else { nil } }
+        // Two legal interleavings under the actor's atomic `inProgress` guard:
+        // (a) the two `install` calls truly overlap: the second observes `inProgress[id] != nil`
+        //     and throws `.alreadyInProgress` while the first proceeds to download and install; or
+        // (b) the actor happens to fully serialize them (the first finishes installing before the
+        //     second's `performInstall` body starts): the second then sees `.installed` at its own
+        //     top-of-body check and returns success without downloading again.
+        // Either way exactly one download happens and the model ends up installed.
+        #expect(successes.count == 1 && successes[0].last == .installed)
+        #expect(failures.isEmpty || failures == [.alreadyInProgress("big")])
+        #expect(await h.downloader.calls.count == 1)
+        #expect(await store.state(of: "big") == .installed)
+    }
+
     @Test("setDefault persists and rejects models that are not installed")
     func setDefault() async throws {
         let h = Harness()
