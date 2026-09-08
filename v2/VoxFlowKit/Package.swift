@@ -19,6 +19,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "VoxFlowCore"),
+        .target(name: "VoxFlowTestSupport", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowAudio", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowSpeech", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowModels", dependencies: ["VoxFlowCore"]),
@@ -28,15 +29,15 @@ let package = Package(
         .target(name: "VoxFlowStyling", dependencies: ["VoxFlowCore"]),
         .target(name: "VoxFlowMCP", dependencies: ["VoxFlowCore"]),
 
-        .testTarget(name: "VoxFlowCoreTests", dependencies: ["VoxFlowCore"]),
-        .testTarget(name: "VoxFlowAudioTests", dependencies: ["VoxFlowAudio"]),
-        .testTarget(name: "VoxFlowSpeechTests", dependencies: ["VoxFlowSpeech"]),
-        .testTarget(name: "VoxFlowModelsTests", dependencies: ["VoxFlowModels"]),
-        .testTarget(name: "VoxFlowFilesTests", dependencies: ["VoxFlowFiles"]),
-        .testTarget(name: "VoxFlowDictationTests", dependencies: ["VoxFlowDictation"]),
-        .testTarget(name: "VoxFlowStorageTests", dependencies: ["VoxFlowStorage"]),
-        .testTarget(name: "VoxFlowStylingTests", dependencies: ["VoxFlowStyling"]),
-        .testTarget(name: "VoxFlowMCPTests", dependencies: ["VoxFlowMCP"]),
+        .testTarget(name: "VoxFlowCoreTests", dependencies: ["VoxFlowCore", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowAudioTests", dependencies: ["VoxFlowAudio", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowSpeechTests", dependencies: ["VoxFlowSpeech", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowModelsTests", dependencies: ["VoxFlowModels", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowFilesTests", dependencies: ["VoxFlowFiles", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowDictationTests", dependencies: ["VoxFlowDictation", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowStorageTests", dependencies: ["VoxFlowStorage", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowStylingTests", dependencies: ["VoxFlowStyling", "VoxFlowTestSupport"]),
+        .testTarget(name: "VoxFlowMCPTests", dependencies: ["VoxFlowMCP", "VoxFlowTestSupport"]),
     ],
     swiftLanguageModes: [.v6]
 )
