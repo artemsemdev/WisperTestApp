@@ -27,8 +27,9 @@ playground.xcworkspace
 # ── Swift Package Manager ───────────────────────────────────────────────────
 .build/
 .swiftpm/
-# VoxFlowKit/Package.resolved IS tracked (reproducible builds). Only the copy Xcode
-# writes inside the generated project is ignored (and that directory is ignored anyway).
+spikes/**/.build/
+# No Package.resolved is generated: the package has no source-control dependencies; the
+# XCFramework is pinned by its checksum in Package.swift.
 
 # ── Test output ─────────────────────────────────────────────────────────────
 *.xcresult
@@ -43,12 +44,7 @@ TestResults/
 *.gguf
 *.mlmodelc
 *.mlpackage
-# Media fixtures: only short WAVs (< 1 MB each) are tracked; compressed formats are not.
-**/Fixtures/*.m4a
-**/Fixtures/*.mp3
-**/Fixtures/*.mp4
-**/Fixtures/*.mov
-!**/Fixtures/**/*.wav
+# Test fixtures under any Fixtures/ directory are tracked; keep each under 1 MB (review checks this).
 
 # ── Signing, secrets, local config ──────────────────────────────────────────
 *.p12
