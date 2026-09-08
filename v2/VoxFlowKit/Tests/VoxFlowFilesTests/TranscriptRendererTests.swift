@@ -46,6 +46,20 @@ struct TranscriptRendererTests {
         """)
     }
 
+    @Test("SRT flattens internal newlines in a segment to a single space")
+    func srtFlattensNewlines() {
+        let document = TranscriptDocument(
+            sourceURL: Self.document.sourceURL,
+            transcript: Transcript(segments: [TranscriptSegment(start: 0, end: 1, text: "line one\n\nline two")!], language: "en"),
+            modelID: Self.document.modelID, audioDuration: 1, processingTime: 0, createdAt: Self.document.createdAt)
+        #expect(TranscriptRenderer.render(document, format: .srt, timestamps: false) == """
+        1
+        00:00:00,000 --> 00:00:01,000
+        line one line two
+
+        """)
+    }
+
     @Test("VTT")
     func vtt() {
         #expect(TranscriptRenderer.render(Self.document, format: .vtt, timestamps: true) == """
@@ -56,6 +70,21 @@ struct TranscriptRendererTests {
 
         00:00:04.120 --> 00:00:09.860
         Last week we covered why fixed-length context vectors become a bottleneck.
+
+        """)
+    }
+
+    @Test("VTT flattens internal newlines in a segment to a single space")
+    func vttFlattensNewlines() {
+        let document = TranscriptDocument(
+            sourceURL: Self.document.sourceURL,
+            transcript: Transcript(segments: [TranscriptSegment(start: 0, end: 1, text: "line one\n\nline two")!], language: "en"),
+            modelID: Self.document.modelID, audioDuration: 1, processingTime: 0, createdAt: Self.document.createdAt)
+        #expect(TranscriptRenderer.render(document, format: .vtt, timestamps: false) == """
+        WEBVTT
+
+        00:00:00.000 --> 00:00:01.000
+        line one line two
 
         """)
     }

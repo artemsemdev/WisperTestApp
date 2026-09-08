@@ -23,7 +23,13 @@ enum JSONWriter: TranscriptWriter {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
-        let data = (try? encoder.encode(payload)) ?? Data("{}".utf8)
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        let data: Data
+        do {
+            data = try encoder.encode(payload)
+        } catch {
+            preconditionFailure("TranscriptDocument is always encodable: \(error)")
+        }
         return String(decoding: data, as: UTF8.self) + "\n"
     }
 }

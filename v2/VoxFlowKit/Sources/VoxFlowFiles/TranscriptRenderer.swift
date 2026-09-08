@@ -21,4 +21,10 @@ public enum TranscriptRenderer {
     static func cleanText(_ segment: TranscriptSegment) -> String {
         segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// `cleanText`, with runs of `\n`/`\r\n` flattened to a single space — a blank line inside a
+    /// cue's text would otherwise end the cue early in SRT/VTT.
+    static func cueText(_ segment: TranscriptSegment) -> String {
+        cleanText(segment).replacingOccurrences(of: "(\r\n|\n)+", with: " ", options: .regularExpression)
+    }
 }

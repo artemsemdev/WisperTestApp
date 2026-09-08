@@ -20,6 +20,7 @@ public struct FileTranscriber: FileTranscribing {
 
     public func transcribe(_ url: URL, options: TranscriptionOptions,
                            progress: @Sendable @escaping (Double) -> Void) async throws -> TranscriptDocument {
+        try Task.checkCancellation()
         let started = now()
         let audio: AudioSamples
         do {
@@ -47,9 +48,10 @@ public struct FileTranscriber: FileTranscribing {
             }
             try Task.checkCancellation()
             progress(1)
+            let finished = now()
             return TranscriptDocument(sourceURL: url, transcript: Transcript(segments: segments, language: options.language),
                                       modelID: modelID, audioDuration: audio.duration,
-                                      processingTime: now().timeIntervalSince(started), createdAt: now())
+                                      processingTime: finished.timeIntervalSince(started), createdAt: finished)
         } catch SpeechEngineError.modelNotLoaded {
             throw FileTranscriptionError.noModelInstalled
         } catch SpeechEngineError.cancelled {
