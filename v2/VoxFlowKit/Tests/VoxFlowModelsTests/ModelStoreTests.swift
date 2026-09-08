@@ -40,6 +40,11 @@ struct ModelStoreTests {
     static func drain(_ stream: AsyncThrowingStream<ModelState, Error>) async throws -> [ModelState] {
         var states: [ModelState] = []
         for try await state in stream { states.append(state) }
+        // A cancelled consuming task can end AsyncThrowingStream iteration with no error at all — the
+        // stream's own cancellation-awareness resolves `next()` with nil before the producer's later
+        // `continuation.finish(throwing:)` can land. Surface that as a thrown CancellationError so
+        // callers (like cancelKeepsPartial) see it the way `install`'s own semantics intend.
+        if Task.isCancelled { throw CancellationError() }
         return states
     }
 
@@ -181,5 +186,56 @@ struct ModelStoreTests {
         _ = try await Self.drain(await store.install(id: "small"))
         try await store.setDefault(id: "small")
         #expect(h.settings.string(forKey: "models.default.speech") == "small")
+    }
+
+    @Test("an oversized partial is discarded and the download restarts from zero")
+    func oversizedPartialRestarts() async throws {
+        let h = Harness()
+        await h.serveAll()
+        try Data(repeating: 7, count: 300_001).write(to: h.dir.file("big.bin.partial"))
+        let store = h.store()
+        #expect(await store.state(of: "big") == .notInstalled)
+        let states = try await Self.drain(await store.install(id: "big"))
+        #expect(states.last == .installed)
+        #expect(await h.downloader.calls.map(\.resumedFrom) == [0])
+    }
+
+    @Test("cancelling an install keeps the partial and reports paused (ST-03o pause)")
+    func cancelKeepsPartial() async throws {
+        let h = Harness()
+        await h.serveAll()
+        await h.downloader.setChunkSize(512)             // many chunks → cancellation lands mid-transfer
+        let store = h.store()
+        let task = Task { try await Self.drain(await store.install(id: "big")) }
+        try await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        // The consumer sees its own cancellation (and `drain` throws) as soon as the stream notices
+        // the task is cancelled — that can run ahead of `performInstall`'s own cancellation handling
+        // on the actor, which clears `inProgress` in a `defer` once *it* unwinds. Poll briefly rather
+        // than assume that cleanup has already landed by the time we ask.
+        var state = await store.state(of: "big")
+        var attempts = 0
+        while case .downloading = state, attempts < 100 {
+            try await Task.sleep(for: .milliseconds(5))
+            state = await store.state(of: "big")
+            attempts += 1
+        }
+        if case .paused(let written, let total) = state {
+            #expect(written > 0 && written < total)
+        } else {
+            Issue.record("expected .paused after cancellation, got \(state)")
+        }
+    }
+
+    @Test("a catalog entry without a checksum cannot be installed (real Qwen row)")
+    func checksumUnknown() async throws {
+        let h = Harness()
+        let store = ModelStore(directory: h.dir.url, catalog: ModelCatalog.all, downloader: h.downloader,
+                               freeSpace: h.freeSpace, settings: h.settings)
+        await #expect(throws: ModelStoreError.checksumUnknown("qwen2.5-3b-instruct-q4")) {
+            _ = try await Self.drain(await store.install(id: "qwen2.5-3b-instruct-q4"))
+        }
+        #expect(await h.downloader.calls.isEmpty)
     }
 }

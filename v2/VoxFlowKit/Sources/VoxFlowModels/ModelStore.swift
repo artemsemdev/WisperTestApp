@@ -20,6 +20,7 @@ public enum ModelStoreError: Error, Equatable, Sendable {
     case notInstalled(String)
     case cannotRemoveOnlyModel(String)
     case alreadyInProgress(String)
+    case http(status: Int)
 }
 
 /// Owns the model files on disk (design ST-03, ST-03v, ST-03d, SYS-DISK, ONB-04a).
@@ -59,6 +60,7 @@ public actor ModelStore {
         guard let model = descriptor(id) else { return .notInstalled }
         if fileSize(installedURL(model)) == model.sizeInBytes { return .installed }
         if let partial = fileSize(partialURL(model)), partial > 0 {
+            guard partial <= model.sizeInBytes else { return .notInstalled }
             return .paused(bytesWritten: partial, total: model.sizeInBytes)
         }
         return .notInstalled
@@ -108,7 +110,11 @@ public actor ModelStore {
         if state(of: id) == .installed { emit(.installed); return }
 
         let partial = partialURL(model)
-        let alreadyHave = fileSize(partial) ?? 0
+        var alreadyHave = fileSize(partial) ?? 0
+        if alreadyHave > model.sizeInBytes {
+            try? fileManager.removeItem(at: partial)
+            alreadyHave = 0
+        }
         let required = model.sizeInBytes - alreadyHave + Self.reserveBytes
         let available = try freeSpace.availableBytes(at: directory)
         guard available >= required else {
@@ -123,7 +129,11 @@ public actor ModelStore {
             }
         } catch DownloadError.offline(let written) {
             throw ModelStoreError.downloadInterrupted(bytesWritten: written)
+        } catch DownloadError.http(let status) {
+            throw ModelStoreError.http(status: status)
         } catch DownloadError.cancelled {
+            throw CancellationError()
+        } catch is CancellationError {
             throw CancellationError()
         } catch {
             throw ModelStoreError.downloadFailed(String(describing: error))
@@ -131,7 +141,7 @@ public actor ModelStore {
 
         inProgress[id] = .verifying
         emit(.verifying)
-        let digest = try SHA256File.hexDigest(of: partial)
+        let digest = try await Task.detached(priority: .utility) { try SHA256File.hexDigest(of: partial) }.value
         guard digest == model.sha256.lowercased() else {
             try? fileManager.removeItem(at: partial)
             throw ModelStoreError.checksumMismatch
@@ -149,9 +159,12 @@ public actor ModelStore {
         guard let model = descriptor(id) else { throw ModelStoreError.unknownModel(id) }
         guard state(of: id) == .installed else { throw ModelStoreError.notInstalled(id) }
         let others = installedModels(role: model.role).filter { $0.id != id }
+        // Design ST-03d: the last installed *speech* model cannot be removed (dictation would stop
+        // working); style models can, the app then falls back to rule-based cleanup.
         if model.role == .speech, others.isEmpty { throw ModelStoreError.cannotRemoveOnlyModel(id) }
         let wasDefault = defaultModel(role: model.role)?.id == id
         try fileManager.removeItem(at: installedURL(model))
+        try? fileManager.removeItem(at: partialURL(model))
         if wasDefault {
             settings.set(others.first(where: \.isDefault)?.id ?? others.first?.id, forKey: Self.defaultKey(model.role))
         }
